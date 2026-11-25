@@ -1,121 +1,219 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Sparkles, Leaf, Star } from "lucide-react"
+import {
+  Leaf,
+  ArrowRight,
+  CheckCircle2,
+  ShieldCheck,
+  MapPin,
+  Store,
+  ShoppingBag,
+  TrendingUp,
+  Clock,
+} from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
+
+const WEEKLY_RECOVERY = [
+  { day: "S", height: "48%" },
+  { day: "M", height: "72%" },
+  { day: "T", height: "58%" },
+  { day: "W", height: "40%" },
+  { day: "T", height: "64%" },
+  { day: "F", height: "86%" },
+  { day: "S", height: "54%" },
+]
 
 export default function IntroPage() {
   const router = useRouter()
-  const [showContent, setShowContent] = useState(false)
-  const [showButton, setShowButton] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    const timer1 = setTimeout(() => setShowContent(true), 500)
-    const timer2 = setTimeout(() => setShowButton(true), 1500)
-    return () => {
-      clearTimeout(timer1)
-      clearTimeout(timer2)
-    }
+    const timer = setTimeout(() => setMounted(true), 80)
+    return () => clearTimeout(timer)
   }, [])
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background">
-      {/* Theme Toggle */}
-      <div className="absolute right-4 top-4 z-50">
-        <ThemeToggle />
-      </div>
-
-      {/* Magical background effects */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 h-96 w-96 rounded-full bg-[#d4af37]/10 blur-3xl dark:bg-[#d4af37]/10" />
-        <div className="absolute -bottom-40 -left-40 h-96 w-96 rounded-full bg-[#d4af37]/10 blur-3xl dark:bg-[#d4af37]/10" />
-        <div className="absolute top-1/4 left-1/4 h-64 w-64 rounded-full bg-[#8b4513]/5 blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 h-64 w-64 rounded-full bg-[#1a472a]/5 blur-3xl" />
-        
-        {/* Floating magical particles */}
-        {[...Array(20)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute h-1 w-1 rounded-full bg-[#d4af37]/60 animate-float"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 3}s`,
-              animationDuration: `${3 + Math.random() * 2}s`,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Main Content */}
-      <div className={`relative z-10 text-center transition-all duration-1000 ${showContent ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-        {/* Logo */}
-        <div className="mb-8 flex items-center justify-center">
-          <div className="relative">
-            <div className="flex h-32 w-32 items-center justify-center rounded-full border-4 border-[#d4af37] bg-gradient-to-br from-card to-secondary shadow-2xl animate-glow">
-              <Leaf className="h-16 w-16 text-[#d4af37]" />
+    <div className="min-h-screen bg-background text-foreground">
+      {/* Hero Section inspired by serene botanical healthtech UI */}
+      <section className="bg-botanical-hero relative overflow-hidden text-white">
+        {/* Top Nav */}
+        <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25 backdrop-blur-md">
+              <Leaf className="h-5 w-5 text-white" />
             </div>
-            <div className="absolute -right-2 -top-2 flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#d4af37] bg-card shadow-lg">
-              <Sparkles className="h-5 w-5 text-[#d4af37] animate-sparkle" />
+            <span className="text-lg font-semibold tracking-tight text-white">
+              TerraLoop
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Link
+              href="/browse-fruits"
+              className="hidden rounded-full px-4 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 hover:text-white sm:inline-flex"
+            >
+              Produce Guide
+            </Link>
+            <Link
+              href="/marketplace"
+              className="hidden rounded-full px-4 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 hover:text-white sm:inline-flex"
+            >
+              Marketplace
+            </Link>
+            <Link
+              href="/login"
+              className="rounded-full bg-white/12 px-4 py-2 text-sm font-medium text-white ring-1 ring-white/20 transition-colors hover:bg-white/20"
+            >
+              Sign In
+            </Link>
+            <ThemeToggle className="border-white/25 bg-white/10 text-white hover:bg-white/20 hover:border-white/40 [&_svg]:text-white" />
+          </div>
+        </header>
+
+        {/* Hero Copy + Live Preview Card */}
+        <div
+          className={`relative z-10 mx-auto max-w-5xl px-6 pb-20 pt-10 text-center transition-all duration-700 ${
+            mounted ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
+          }`}
+        >
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-white/12 px-4 py-1.5 text-xs font-medium text-emerald-100 ring-1 ring-white/20 backdrop-blur-sm">
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-200" />
+            AI-Verified Freshness for Neighbourhood Grocers
+          </div>
+
+          <h1 className="mx-auto max-w-3xl text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl md:leading-[1.1]">
+            Fresh produce recovery for local communities
+          </h1>
+
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-emerald-100/85 sm:text-lg">
+            Rescue ripe surplus fruit before it goes to waste. Neighbourhood grocers get instant AI freshness scoring and dynamic pricing, while nearby buyers shop verified quality.
+          </p>
+
+          {/* Primary Actions */}
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <button
+              onClick={() => router.push("/language")}
+              className="group inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-8 py-3.5 text-base font-semibold text-[#183d2b] shadow-lg shadow-black/15 transition-all hover:bg-emerald-50 hover:shadow-xl sm:w-auto"
+            >
+              Get Started
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </button>
+            <Link
+              href="/marketplace"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-white/12 px-7 py-3.5 text-base font-medium text-white ring-1 ring-white/25 backdrop-blur-sm transition-all hover:bg-white/20 sm:w-auto"
+            >
+              Explore Marketplace
+            </Link>
+          </div>
+
+          {/* Floating Clean Dashboard Preview Card (echoing reference visual) */}
+          <div className="mx-auto mt-14 max-w-md rounded-3xl bg-card p-5 text-left text-card-foreground shadow-2xl shadow-black/25 ring-1 ring-black/5">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Live Snapshot</p>
+                <h2 className="text-lg font-bold tracking-tight text-foreground">Dashboard</h2>
+              </div>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
+                <MapPin className="h-3.5 w-3.5" />
+                2.5 km radius
+              </span>
             </div>
-            <div className="absolute -left-2 -bottom-2 flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#d4af37] bg-card shadow-lg">
-              <Star className="h-4 w-4 text-[#d4af37] fill-[#d4af37]" />
+
+            <div className="mb-3 grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-border bg-background/70 p-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Avg. Shelf Life</span>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                    <Clock className="h-3.5 w-3.5" />
+                  </span>
+                </div>
+                <p className="mt-1.5 text-base font-bold text-foreground">4–5 Days</p>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-background/70 p-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Quality Status</span>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  </span>
+                </div>
+                <p className="mt-1.5 text-base font-bold text-foreground">9.1 / 10 Fresh</p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-border bg-background/70 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">Produce Rescued</span>
+                <span className="rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-medium text-secondary-foreground">
+                  Weekly
+                </span>
+              </div>
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-2xl font-bold tracking-tight text-foreground">
+                    42 <span className="text-sm font-medium text-muted-foreground">kg</span>
+                  </p>
+                  <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-primary">
+                    <TrendingUp className="h-3 w-3" />
+                    +18% this week
+                  </p>
+                </div>
+                <div className="flex h-16 items-end gap-2">
+                  {WEEKLY_RECOVERY.map((bar, idx) => (
+                    <div key={idx} className="flex h-full flex-col items-center justify-end gap-1">
+                      <div
+                        className="w-3.5 rounded-t-md bg-primary/25 transition-all"
+                        style={{ height: bar.height }}
+                      />
+                      <span className="text-[10px] font-medium text-muted-foreground">
+                        {bar.day}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
+      </section>
 
-        {/* Title */}
-        <h1 
-          className="mb-4 text-5xl font-bold tracking-tight text-magical md:text-7xl"
-          style={{ fontFamily: 'Cinzel, serif' }}
-        >
-          TerraLoop
-        </h1>
-        
-        {/* Tagline */}
-        <p 
-          className="mb-2 text-xl text-[#d4af37]/80 md:text-2xl"
-          style={{ fontFamily: 'Lora, serif' }}
-        >
-          The Magical Marketplace
-        </p>
-        <p 
-          className="mb-12 text-base text-muted-foreground md:text-lg"
-          style={{ fontFamily: 'Lora, serif' }}
-        >
-          Where Freshness Meets Enchantment
-        </p>
+      {/* Value Pillars Section */}
+      <section className="mx-auto max-w-5xl px-6 py-16">
+        <div className="grid gap-6 md:grid-cols-3">
+          <div className="card-fresh rounded-2xl border border-border bg-card p-6">
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-secondary text-primary">
+              <Store className="h-5 w-5" />
+            </div>
+            <h3 className="text-base font-semibold text-foreground">For Neighbourhood Grocers</h3>
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+              Upload 4 quick angles of surplus fruit to receive an instant AI freshness rating, shelf-life estimate, and fair pricing guide.
+            </p>
+          </div>
 
-        {/* Decorative line */}
-        <div className="mx-auto mb-12 flex items-center justify-center gap-4">
-          <div className="h-px w-16 bg-gradient-to-r from-transparent to-[#d4af37]/50" />
-          <Sparkles className="h-4 w-4 text-[#d4af37]/50" />
-          <div className="h-px w-16 bg-gradient-to-l from-transparent to-[#d4af37]/50" />
+          <div className="card-fresh rounded-2xl border border-border bg-card p-6">
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-secondary text-primary">
+              <ShoppingBag className="h-5 w-5" />
+            </div>
+            <h3 className="text-base font-semibold text-foreground">For Local Buyers</h3>
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+              Discover quality-graded climacteric and non-climacteric fruits from verified shops within 2.5 km with QR pickup.
+            </p>
+          </div>
+
+          <div className="card-fresh rounded-2xl border border-border bg-card p-6">
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-secondary text-primary">
+              <Leaf className="h-5 w-5" />
+            </div>
+            <h3 className="text-base font-semibold text-foreground">Zero-Waste Impact</h3>
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+              Every purchase rescues fresh food from spoilage, tracks real shelf-life, and recommends best culinary uses by ripeness.
+            </p>
+          </div>
         </div>
-
-        {/* Enter Button */}
-        <div className={`transition-all duration-700 ${showButton ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-          <button
-            onClick={() => router.push('/language')}
-            className="group relative overflow-hidden rounded-full border-2 border-[#d4af37] bg-gradient-to-r from-[#d4af37]/10 to-[#d4af37]/5 px-12 py-4 text-lg font-semibold text-[#d4af37] transition-all duration-300 hover:from-[#d4af37] hover:to-[#b8962f] hover:text-background hover:shadow-[0_0_30px_rgba(212,175,55,0.5)]"
-            style={{ fontFamily: 'Cinzel, serif' }}
-          >
-            <span className="relative z-10">Begin Your Journey</span>
-            <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-500 group-hover:translate-x-full" />
-          </button>
-        </div>
-      </div>
-
-      {/* Bottom decoration */}
-      <div className="absolute bottom-8 left-0 right-0 text-center">
-        <p 
-          className="text-xs text-muted-foreground/50"
-          style={{ fontFamily: 'Lora, serif' }}
-        >
-          Powered by AI Magic
-        </p>
-      </div>
+      </section>
     </div>
   )
 }

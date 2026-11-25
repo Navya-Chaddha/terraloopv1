@@ -43,6 +43,9 @@ export interface CreateListingInput {
 
 // Create a new listing in Supabase
 export async function createSupabaseListing(input: CreateListingInput): Promise<SupabaseListing | null> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return null
+  }
   const supabase = createClient()
   
   // Get user's current location

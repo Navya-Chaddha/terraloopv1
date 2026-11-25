@@ -2,14 +2,14 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Check, Globe, Sparkles } from "lucide-react"
+import { ArrowLeft, ArrowRight, Check, Globe } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { languages } from "@/lib/localization"
 
 export default function LanguagePage() {
   const router = useRouter()
-  const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null)
+  const [selectedLanguage, setSelectedLanguage] = useState<string | null>("en")
 
   const handleContinue = () => {
     if (selectedLanguage) {
@@ -19,103 +19,91 @@ export default function LanguagePage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
-      {/* Theme Toggle */}
-      <div className="absolute right-4 top-4 z-50">
+    <div className="bg-botanical-subtle relative min-h-screen bg-background">
+      {/* Top Navigation */}
+      <header className="mx-auto flex max-w-3xl items-center justify-between px-4 pt-6">
+        <button
+          onClick={() => router.push("/")}
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-secondary"
+          aria-label="Back to home"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <span>Step 1 of 3</span>
+        </div>
         <ThemeToggle />
-      </div>
+      </header>
 
-      {/* Back Button */}
-      <button
-        onClick={() => router.push("/")}
-        className="absolute left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-[#d4af37]/30 bg-card/50 backdrop-blur-sm transition-all hover:border-[#d4af37] hover:bg-card"
-      >
-        <ArrowLeft className="h-5 w-5 text-[#d4af37]" />
-      </button>
-
-      {/* Background effects */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-[#d4af37]/10 blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-[#d4af37]/10 blur-3xl" />
-      </div>
-
-      <div className="relative mx-auto max-w-lg px-4 py-20">
+      <div className="mx-auto max-w-lg px-4 py-12">
         {/* Header */}
-        <div className="mb-10 text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border-2 border-[#d4af37] bg-card shadow-lg">
-            <Globe className="h-8 w-8 text-[#d4af37]" />
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md shadow-primary/15">
+            <Globe className="h-7 w-7" />
           </div>
-          <h1 
-            className="mb-2 text-3xl font-bold text-magical"
-            style={{ fontFamily: 'Cinzel, serif' }}
-          >
-            भाषा चुनें
-          </h1>
-          <p className="text-lg text-[#d4af37]" style={{ fontFamily: 'Cinzel, serif' }}>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
             Select Language
-          </p>
-          <p 
-            className="mt-2 text-muted-foreground"
-            style={{ fontFamily: 'Lora, serif' }}
-          >
-            Choose your preferred language
+          </h1>
+          <p className="mt-1.5 text-sm font-medium text-primary">
+            भाषा चुनें • Choose your preferred language
           </p>
         </div>
 
         {/* Language Grid */}
         <div className="mb-8 grid grid-cols-2 gap-3">
-          {languages.map((lang) => (
-            <Card
-              key={lang.code}
-              onClick={() => setSelectedLanguage(lang.code)}
-              className={`cursor-pointer transition-all duration-300 ${
-                selectedLanguage === lang.code
-                  ? 'border-[#d4af37] bg-[#d4af37]/10 shadow-[0_0_15px_rgba(212,175,55,0.3)]'
-                  : 'card-magical border-border hover:border-[#d4af37]/50'
-              }`}
-            >
-              <CardContent className="flex items-center justify-between p-4">
-                <div>
-                  <p 
-                    className="font-semibold text-foreground text-lg"
-                    style={{ fontFamily: 'Cinzel, serif' }}
-                  >
-                    {lang.native}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{lang.name}</p>
-                </div>
-                {selectedLanguage === lang.code && (
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#d4af37]">
-                    <Check className="h-4 w-4 text-background" />
+          {languages.map((lang) => {
+            const isSelected = selectedLanguage === lang.code
+            return (
+              <Card
+                key={lang.code}
+                onClick={() => setSelectedLanguage(lang.code)}
+                className={`card-fresh cursor-pointer rounded-2xl border transition-all ${
+                  isSelected
+                    ? "border-primary bg-secondary/70 ring-2 ring-primary/20"
+                    : "border-border bg-card hover:border-primary/35"
+                }`}
+              >
+                <CardContent className="flex items-center justify-between p-4">
+                  <div>
+                    <p className="text-base font-semibold text-foreground">
+                      {lang.native}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{lang.name}</p>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                  <div
+                    className={`flex h-6 w-6 items-center justify-center rounded-full border transition-colors ${
+                      isSelected
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-background"
+                    }`}
+                  >
+                    {isSelected && <Check className="h-3.5 w-3.5" />}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
 
         {/* Continue Button */}
         <button
           onClick={handleContinue}
           disabled={!selectedLanguage}
-          className={`group relative w-full overflow-hidden rounded-full border-2 py-4 text-lg font-semibold transition-all duration-300 ${
+          className={`group flex w-full items-center justify-center gap-2 rounded-full py-3.5 text-base font-semibold transition-all ${
             selectedLanguage
-              ? 'border-[#d4af37] bg-gradient-to-r from-[#d4af37] to-[#b8962f] text-background hover:shadow-[0_0_30px_rgba(212,175,55,0.5)]'
-              : 'border-border bg-secondary text-muted-foreground cursor-not-allowed'
+              ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90"
+              : "cursor-not-allowed bg-muted text-muted-foreground"
           }`}
-          style={{ fontFamily: 'Cinzel, serif' }}
         >
-          <span className="relative z-10 flex items-center justify-center gap-2">
-            Continue / जारी रखें
-            <Sparkles className="h-5 w-5" />
-          </span>
+          Continue / जारी रखें
+          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
         </button>
 
         {/* Step indicator */}
         <div className="mt-8 flex items-center justify-center gap-2">
-          <div className="h-2 w-8 rounded-full bg-[#d4af37]" />
-          <div className="h-2 w-8 rounded-full bg-border" />
-          <div className="h-2 w-8 rounded-full bg-border" />
+          <div className="h-1.5 w-8 rounded-full bg-primary" />
+          <div className="h-1.5 w-8 rounded-full bg-border" />
+          <div className="h-1.5 w-8 rounded-full bg-border" />
         </div>
       </div>
     </div>

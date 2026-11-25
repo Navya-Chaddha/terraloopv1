@@ -3,29 +3,38 @@
 import { useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ShoppingCart, Store, Sparkles, Star, Trophy, Zap, LogOut, MapPin, Loader2 } from "lucide-react"
+import {
+  ShoppingCart,
+  Store,
+  Leaf,
+  Trophy,
+  CheckCircle2,
+  LogOut,
+  MapPin,
+  Loader2,
+  ArrowRight,
+  BookOpen,
+} from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { useUser } from "@/contexts/UserContext"
 
-export default function Home() {
+export default function DashboardPage() {
   const router = useRouter()
-  const { 
-    user, 
-    isAuthenticated, 
-    isLoading, 
-    logout, 
-    currentLocation, 
+  const {
+    user,
+    isAuthenticated,
+    isLoading,
+    logout,
+    currentLocation,
     isLocationTracking,
     startLocationTracking,
-    GEOFENCE_RADIUS_KM 
+    GEOFENCE_RADIUS_KM,
   } = useUser()
 
-  // Redirect to login if not authenticated
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      // Check for legacy session
       const legacyPhone = localStorage.getItem("terraloop_phone")
       const legacyName = localStorage.getItem("terraloop_name")
       if (!legacyPhone || !legacyName) {
@@ -34,7 +43,6 @@ export default function Home() {
     }
   }, [isAuthenticated, isLoading, router])
 
-  // Start location tracking if not already tracking
   useEffect(() => {
     if (isAuthenticated && !isLocationTracking) {
       startLocationTracking()
@@ -46,137 +54,122 @@ export default function Home() {
     router.push("/login")
   }
 
-  // Show loading state while checking auth
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <Loader2 className="mx-auto h-8 w-8 animate-spin text-[#d4af37]" />
-          <p className="mt-4 text-muted-foreground">Loading...</p>
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+          <p className="mt-3 text-sm text-muted-foreground">Loading your workspace...</p>
         </div>
       </div>
     )
   }
+
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
-      {/* Theme Toggle & Logout */}
-      <div className="absolute right-4 top-4 z-50 flex items-center gap-2">
-        <ThemeToggle />
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={handleLogout}
-          className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
-          title="Logout"
-        >
-          <LogOut className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {/* Location Status */}
-      {currentLocation && (
-        <div className="absolute left-4 top-4 z-50">
-          <div className="flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1.5 text-xs text-green-400">
-            <MapPin className="h-3 w-3" />
-            <span>Tracking ({GEOFENCE_RADIUS_KM}km radius)</span>
-          </div>
-        </div>
-      )}
-
-      {/* Magical background effects */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-[#d4af37]/10 blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-[#d4af37]/10 blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#8b4513]/5 blur-3xl" />
-      </div>
-
-      <div className="relative mx-auto max-w-4xl px-4 py-12">
-        {/* Header with magical branding */}
-        <div className="mb-16 text-center">
-          <div className="mb-6 flex items-center justify-center gap-3">
-            <div className="relative">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-[#d4af37] bg-gradient-to-br from-[#1a1a2e] to-[#16213e] shadow-lg">
-                <Sparkles className="h-8 w-8 text-[#d4af37] animate-sparkle" />
+    <div className="bg-botanical-subtle min-h-screen bg-background">
+      {/* Top Botanical Header Strip */}
+      <div className="bg-botanical-hero text-white">
+        <div className="mx-auto max-w-5xl px-4 pb-16 pt-6 sm:px-6">
+          <div className="flex items-center justify-between">
+            <Link href="/" className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25 backdrop-blur-md">
+                <Leaf className="h-5 w-5 text-white" />
               </div>
-              <div className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full border border-[#d4af37] bg-[#1a1a2e] text-xs font-bold text-[#d4af37]">
-                <Star className="h-3 w-3 fill-[#d4af37]" />
-              </div>
-            </div>
-          </div>
-          
-          <h1 className="mb-2 text-4xl font-bold tracking-tight text-magical md:text-5xl" style={{ fontFamily: 'Cinzel, serif' }}>
-            TerraLoop
-          </h1>
-          <p className="mb-4 text-lg text-[#d4af37]/80" style={{ fontFamily: 'Lora, serif' }}>
-            The Magical Marketplace of Fresh Enchantments
-          </p>
-          
-          {/* XP Bar */}
-          <div className="mx-auto max-w-xs">
-            <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Trophy className="h-3 w-3 text-[#d4af37]" />
-                Level 1 Apprentice
+              <span className="text-lg font-semibold tracking-tight text-white">
+                TerraLoop
               </span>
-              <span>0 / 100 XP</span>
+            </Link>
+
+            <div className="flex items-center gap-2.5">
+              {currentLocation && (
+                <div className="hidden items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 text-xs font-medium text-emerald-50 ring-1 ring-white/20 backdrop-blur-sm sm:flex">
+                  <MapPin className="h-3.5 w-3.5 text-emerald-200" />
+                  <span>{GEOFENCE_RADIUS_KM} km radius active</span>
+                </div>
+              )}
+              <ThemeToggle className="border-white/25 bg-white/10 text-white hover:bg-white/20 hover:border-white/40 [&_svg]:text-white" />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleLogout}
+                className="h-10 w-10 rounded-full border border-white/25 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-secondary">
-              <div className="xp-bar h-full w-0 rounded-full" />
+          </div>
+
+          <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-emerald-200/90">
+                Welcome back{user?.name && user.name !== "User" ? `, ${user.name}` : ""}
+              </p>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                Dashboard
+              </h1>
+              <p className="mt-1.5 text-sm text-emerald-100/85">
+                Fresh produce recovery connecting local grocers and nearby buyers
+              </p>
+            </div>
+
+            <div className="inline-flex items-center gap-3 self-start rounded-2xl bg-white/12 px-4 py-2.5 ring-1 ring-white/20 backdrop-blur-sm">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
+                <Trophy className="h-4 w-4 text-emerald-100" />
+              </div>
+              <div>
+                <p className="text-xs text-emerald-100/80">Impact Status</p>
+                <p className="text-sm font-semibold text-white">Level 1 • 0 / 100 XP</p>
+              </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Role Selection */}
-        <div className="mb-8 text-center">
-          <h2 className="mb-2 text-2xl font-semibold text-foreground" style={{ fontFamily: 'Cinzel, serif' }}>
-            Choose Your Path
-          </h2>
-          <p className="text-muted-foreground" style={{ fontFamily: 'Lora, serif' }}>
-            Are you seeking magical produce or offering your harvest?
-          </p>
-        </div>
-
+      {/* Main Content overlapping Hero slightly */}
+      <div className="mx-auto -mt-8 max-w-5xl px-4 pb-16 sm:px-6">
+        {/* Role Selection Grid */}
         <div className="grid gap-6 md:grid-cols-2">
           {/* Buyer Card */}
           <Link href="/buyer" className="group block">
-            <Card className="card-magical h-full overflow-hidden bg-card transition-all duration-300">
+            <Card className="card-fresh h-full overflow-hidden rounded-3xl border-border bg-card">
               <CardContent className="p-0">
-                <div className="relative">
-                  {/* Card Header */}
-                  <div className="bg-gradient-to-r from-[#1a472a] to-[#2d5a3f] px-6 py-8 text-center">
-                    <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full border-2 border-[#d4af37] bg-[#1a1a2e]/80 shadow-lg transition-transform group-hover:scale-110">
-                      <ShoppingCart className="h-10 w-10 text-[#d4af37]" />
+                <div className="border-b border-border/60 bg-secondary/45 px-6 py-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex h-13 w-13 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm transition-transform group-hover:scale-105">
+                      <ShoppingCart className="h-6 w-6" />
                     </div>
-                    <h3 className="text-2xl font-bold text-[#d4af37]" style={{ fontFamily: 'Cinzel, serif' }}>
-                      Buyer
-                    </h3>
-                    <p className="mt-1 text-sm text-[#d4af37]/70" style={{ fontFamily: 'Lora, serif' }}>
-                      Seeker of Fresh Enchantments
-                    </p>
+                    <span className="rounded-full bg-card px-3 py-1 text-xs font-semibold text-primary ring-1 ring-border">
+                      For Shoppers
+                    </span>
                   </div>
-                  
-                  {/* Card Body */}
-                  <div className="bg-gradient-to-b from-card to-secondary/20 px-6 py-6">
-                    <ul className="space-y-3 text-sm text-foreground" style={{ fontFamily: 'Lora, serif' }}>
-                      <li className="flex items-center gap-2">
-                        <Zap className="h-4 w-4 text-[#d4af37]" />
-                        Browse climacteric and non-climacteric fruits
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Zap className="h-4 w-4 text-[#d4af37]" />
-                        View freshness ratings and shelf life
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Zap className="h-4 w-4 text-[#d4af37]" />
-                        Purchase directly from trusted grocers
-                      </li>
-                    </ul>
-                    
-                    <div className="mt-6 rounded-lg border border-[#d4af37]/30 bg-[#d4af37]/10 px-4 py-3 text-center">
-                      <span className="text-sm font-medium text-[#d4af37]" style={{ fontFamily: 'Cinzel, serif' }}>
-                        Enter the Marketplace
-                      </span>
-                    </div>
+                  <h2 className="mt-5 text-2xl font-bold tracking-tight text-foreground">
+                    Buyer Marketplace
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Browse fresh surplus produce from verified neighbourhood grocers
+                  </p>
+                </div>
+
+                <div className="px-6 py-6">
+                  <ul className="space-y-3 text-sm text-foreground/90">
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+                      <span>Filter by climacteric and non-climacteric fruits</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+                      <span>Check AI freshness scores and remaining shelf life</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+                      <span>Reserve nearby produce with instant QR pickup</span>
+                    </li>
+                  </ul>
+
+                  <div className="mt-6 flex items-center justify-between rounded-2xl bg-primary px-5 py-3.5 text-sm font-semibold text-primary-foreground transition-colors group-hover:bg-primary/90">
+                    <span>Enter Marketplace</span>
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </div>
                 </div>
               </CardContent>
@@ -185,44 +178,44 @@ export default function Home() {
 
           {/* Grocer Card */}
           <Link href="/grocer" className="group block">
-            <Card className="card-magical h-full overflow-hidden bg-card transition-all duration-300">
+            <Card className="card-fresh h-full overflow-hidden rounded-3xl border-border bg-card">
               <CardContent className="p-0">
-                <div className="relative">
-                  {/* Card Header */}
-                  <div className="bg-gradient-to-r from-[#5d1a1a] to-[#7a2d2d] px-6 py-8 text-center">
-                    <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full border-2 border-[#d4af37] bg-[#1a1a2e]/80 shadow-lg transition-transform group-hover:scale-110">
-                      <Store className="h-10 w-10 text-[#d4af37]" />
+                <div className="border-b border-border/60 bg-secondary/45 px-6 py-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex h-13 w-13 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm transition-transform group-hover:scale-105">
+                      <Store className="h-6 w-6" />
                     </div>
-                    <h3 className="text-2xl font-bold text-[#d4af37]" style={{ fontFamily: 'Cinzel, serif' }}>
-                      Grocer
-                    </h3>
-                    <p className="mt-1 text-sm text-[#d4af37]/70" style={{ fontFamily: 'Lora, serif' }}>
-                      Purveyor of Magical Produce
-                    </p>
+                    <span className="rounded-full bg-card px-3 py-1 text-xs font-semibold text-primary ring-1 ring-border">
+                      For Retailers
+                    </span>
                   </div>
-                  
-                  {/* Card Body */}
-                  <div className="bg-gradient-to-b from-card to-secondary/20 px-6 py-6">
-                    <ul className="space-y-3 text-sm text-foreground" style={{ fontFamily: 'Lora, serif' }}>
-                      <li className="flex items-center gap-2">
-                        <Zap className="h-4 w-4 text-[#d4af37]" />
-                        Upload photos of your fresh produce
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Zap className="h-4 w-4 text-[#d4af37]" />
-                        AI-powered freshness verification
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Zap className="h-4 w-4 text-[#d4af37]" />
-                        Reach buyers seeking quality fruits
-                      </li>
-                    </ul>
-                    
-                    <div className="mt-6 rounded-lg border border-[#d4af37]/30 bg-[#d4af37]/10 px-4 py-3 text-center">
-                      <span className="text-sm font-medium text-[#d4af37]" style={{ fontFamily: 'Cinzel, serif' }}>
-                        List Your Produce
-                      </span>
-                    </div>
+                  <h2 className="mt-5 text-2xl font-bold tracking-tight text-foreground">
+                    Grocer Studio
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Grade surplus fruit with AI and publish listings to nearby buyers
+                  </p>
+                </div>
+
+                <div className="px-6 py-6">
+                  <ul className="space-y-3 text-sm text-foreground/90">
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+                      <span>Upload 4 quick angles of your fresh produce</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+                      <span>Instant AI freshness scoring and pricing estimates</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+                      <span>Eliminate spoilage and reach shoppers within {GEOFENCE_RADIUS_KM} km</span>
+                    </li>
+                  </ul>
+
+                  <div className="mt-6 flex items-center justify-between rounded-2xl bg-primary px-5 py-3.5 text-sm font-semibold text-primary-foreground transition-colors group-hover:bg-primary/90">
+                    <span>List Your Produce</span>
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </div>
                 </div>
               </CardContent>
@@ -230,11 +223,39 @@ export default function Home() {
           </Link>
         </div>
 
-        {/* Footer tagline */}
-        <div className="mt-12 text-center">
-          <p className="text-sm text-muted-foreground" style={{ fontFamily: 'Lora, serif' }}>
-            &quot;Where every fruit tells a story of freshness&quot;
-          </p>
+        {/* Helpful Quick Links */}
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <Link
+            href="/browse-fruits"
+            className="card-fresh flex items-center justify-between rounded-2xl border border-border bg-card p-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-primary">
+                <BookOpen className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Browse Fruit Guide</p>
+                <p className="text-xs text-muted-foreground">Learn ripening & storage tips</p>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          </Link>
+
+          <Link
+            href="/select-category"
+            className="card-fresh flex items-center justify-between rounded-2xl border border-border bg-card p-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-primary">
+                <Leaf className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Shop by Category</p>
+                <p className="text-xs text-muted-foreground">Climacteric vs. non-climacteric</p>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          </Link>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import QRCode from "react-qr-code"
@@ -10,11 +10,14 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { 
-  ArrowLeft, 
-  ShoppingCart, 
-  Sparkles, 
-  Sun, 
+import { ThemeToggle } from "@/components/theme-toggle"
+import { AuthPromptDialog } from "@/components/auth-prompt-dialog"
+import { useUser } from "@/contexts/UserContext"
+import {
+  ArrowLeft,
+  ShoppingCart,
+  Leaf,
+  Sun,
   Snowflake,
   Info,
   CheckCircle2,
@@ -27,35 +30,35 @@ import {
   Plus,
   Minus,
   X,
-  Wand2,
+  QrCode,
   Package,
   Locate,
   Navigation,
   AlertCircle,
-  Loader2
+  Loader2,
+  ShieldCheck,
+  LogIn,
 } from "lucide-react"
-import { fruits, getCategoryInfo, type Fruit } from "@/lib/fruit-data"
-import { 
-  getAvailableListings, 
-  type GrocerListing, 
-  addToCart, 
-  getCart, 
-  removeFromCart, 
-  updateCartQuantity, 
+import { fruits, getCategoryInfo } from "@/lib/fruit-data"
+import {
+  addToCart,
+  getCart,
+  removeFromCart,
+  updateCartQuantity,
   getCartCount,
   getCartTotal,
   initiatePurchase,
   getCurrentUser,
   type CartItem,
-  type PurchaseOrder
+  type PurchaseOrder,
 } from "@/lib/store"
 import { useMarketplaceListings } from "@/hooks/useGeofencedListings"
+import { NOIDA_SECTORS } from "@/lib/location"
 
 interface MarketplaceContentProps {
   initialCategory: "climacteric" | "non-climacteric" | null
 }
 
-// Unified item type for marketplace
 interface MarketplaceItem {
   id: string
   type: "fruit" | "listing"
@@ -71,215 +74,156 @@ interface MarketplaceItem {
   sellerName: string
   sellerPhone: string
   sellerAddress: string
-  distanceKm?: number // Distance from user (for geofenced listings)
+  distanceKm?: number
 }
 
 function FreshnessBar({ freshness }: { freshness: number }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
-        <div 
-          className="xp-bar h-full rounded-full"
+    <div className="flex items-center gap-2.5">
+      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+        <div
+          className="freshness-bar h-full rounded-full"
           style={{ width: `${freshness * 10}%` }}
         />
       </div>
-      <span className="text-xs font-medium text-[#d4af37]">{freshness.toFixed(1)}/10</span>
+      <span className="text-xs font-semibold text-primary">{freshness.toFixed(1)}/10</span>
     </div>
   )
 }
 
-function FruitCard({ item, onAddToCart, cartQuantity }: { item: MarketplaceItem; onAddToCart: (item: MarketplaceItem) => void; cartQuantity: number }) {
+function FruitCard({
+  item,
+  onAddToCart,
+  cartQuantity,
+}: {
+  item: MarketplaceItem
+  onAddToCart: (item: MarketplaceItem) => void
+  cartQuantity: number
+}) {
   const canAddMore = cartQuantity < item.quantity
-  
+
   return (
-    <Card className="card-magical group overflow-hidden bg-card transition-all duration-300">
-      <div className="relative aspect-square overflow-hidden">
+    <Card className="card-fresh group flex h-full flex-col overflow-hidden rounded-3xl border-border bg-card">
+      <div className="relative aspect-square overflow-hidden bg-muted">
         <Image
           src={item.image}
           alt={item.name}
           fill
-          className="object-cover transition-transform duration-500 group-hover:scale-110"
+          className="object-cover transition-transform duration-500 group-hover:scale-105"
           unoptimized
         />
-        
-        {/* Overlay on hover */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-        
-        {/* Left Tags - Category & Fresh Listed */}
-        <div className="absolute left-2 top-2 flex flex-wrap gap-1.5">
-          {/* Category Tag with House Elf holding it */}
-          <div className="relative">
-            <div className="absolute -left-2 -top-1 z-10">
-              <svg width="20" height="24" viewBox="0 0 20 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {/* House Elf holding tag */}
-                <ellipse cx="10" cy="6" rx="5" ry="5" fill="#8B7355"/>
-                <ellipse cx="7" cy="5" rx="2" ry="1.5" fill="#8B7355"/>
-                <ellipse cx="13" cy="5" rx="2" ry="1.5" fill="#8B7355"/>
-                <circle cx="8" cy="6" r="1" fill="#2d1f1a"/>
-                <circle cx="12" cy="6" r="1" fill="#2d1f1a"/>
-                <ellipse cx="10" cy="8" rx="1" ry="0.5" fill="#5c4a3d"/>
-                <rect x="8" y="11" width="4" height="6" rx="1" fill="#3d2914"/>
-                <rect x="6" y="12" width="3" height="1.5" rx="0.5" fill="#8B7355" transform="rotate(-20 6 12)"/>
-                <rect x="11" y="12" width="3" height="1.5" rx="0.5" fill="#8B7355" transform="rotate(20 11 12)"/>
-                <rect x="8" y="17" width="1.5" height="4" rx="0.5" fill="#8B7355"/>
-                <rect x="10.5" y="17" width="1.5" height="4" rx="0.5" fill="#8B7355"/>
-              </svg>
-            </div>
-            <Badge 
-              variant="secondary" 
-              className={`ml-3 border-2 shadow-lg ${
-                item.category === "climacteric" 
-                  ? "border-[#740001] bg-gradient-to-br from-[#2a0a0a] to-[#1a0505] text-[#d4af37]" 
-                  : "border-[#0d4f8b] bg-gradient-to-br from-[#0a1a2a] to-[#051020] text-[#a0c4e8]"
-              }`}
-            >
-              {item.category === "climacteric" ? (
-                <Sun className="mr-1 h-3 w-3" />
-              ) : (
-                <Snowflake className="mr-1 h-3 w-3" />
-              )}
-              {item.category === "climacteric" ? "Climacteric" : "Non-Climacteric"}
-            </Badge>
-          </div>
-          
-          {/* Fresh Listed Tag with Owl */}
+
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+
+        {/* Top Left Tags */}
+        <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
+          <Badge
+            variant="secondary"
+            className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium shadow-sm backdrop-blur-md ${
+              item.category === "climacteric"
+                ? "border-amber-200 bg-amber-50/95 text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/90 dark:text-amber-200"
+                : "border-sky-200 bg-sky-50/95 text-sky-800 dark:border-sky-500/40 dark:bg-sky-950/90 dark:text-sky-200"
+            }`}
+          >
+            {item.category === "climacteric" ? (
+              <Sun className="mr-1 h-3 w-3" />
+            ) : (
+              <Snowflake className="mr-1 h-3 w-3" />
+            )}
+            {item.category === "climacteric" ? "Climacteric" : "Non-Climacteric"}
+          </Badge>
+
           {item.type === "listing" && (
-            <div className="relative">
-              <div className="absolute -left-1 -top-2 z-10">
-                <svg width="16" height="20" viewBox="0 0 16 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  {/* Small Owl */}
-                  <ellipse cx="8" cy="7" rx="5" ry="5" fill="#5c4a3d"/>
-                  <ellipse cx="5.5" cy="6" rx="2" ry="2.5" fill="#8B7355"/>
-                  <ellipse cx="10.5" cy="6" rx="2" ry="2.5" fill="#8B7355"/>
-                  <circle cx="5.5" cy="6" r="1.2" fill="#d4af37"/>
-                  <circle cx="10.5" cy="6" r="1.2" fill="#d4af37"/>
-                  <circle cx="5.5" cy="6" r="0.6" fill="#1a1a2e"/>
-                  <circle cx="10.5" cy="6" r="0.6" fill="#1a1a2e"/>
-                  <path d="M7 9 L8 10.5 L9 9" stroke="#d4af37" strokeWidth="1" fill="none"/>
-                  <ellipse cx="8" cy="14" rx="3" ry="4" fill="#5c4a3d"/>
-                  <rect x="6" y="17" width="1" height="2" rx="0.3" fill="#d4af37"/>
-                  <rect x="9" y="17" width="1" height="2" rx="0.3" fill="#d4af37"/>
-                </svg>
-              </div>
-              <Badge className="ml-3 border-2 border-[#d4af37] bg-gradient-to-br from-[#2d1f1a] to-[#1a1208] text-[#d4af37] shadow-lg">
-                Fresh Listed
-              </Badge>
-            </div>
+            <Badge className="rounded-full bg-primary px-2.5 py-0.5 text-[11px] font-medium text-primary-foreground shadow-sm">
+              Local Grocer
+            </Badge>
           )}
         </div>
-        
-        {/* Right Tags - Stock & Quantity */}
-        <div className="absolute right-2 top-2 flex flex-col gap-1.5">
-          {/* Stock Tag with Pixie */}
-          <div className="relative">
-            <div className="absolute -right-1 -top-1 z-10">
-              <svg width="18" height="22" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {/* Cornish Pixie */}
-                <ellipse cx="9" cy="8" rx="4" ry="4" fill={item.inStock ? "#1e5631" : "#5c1a1a"}/>
-                <ellipse cx="5" cy="6" rx="3" ry="1.5" fill={item.inStock ? "#1e5631" : "#5c1a1a"} transform="rotate(-30 5 6)"/>
-                <ellipse cx="13" cy="6" rx="3" ry="1.5" fill={item.inStock ? "#1e5631" : "#5c1a1a"} transform="rotate(30 13 6)"/>
-                <circle cx="7.5" cy="7.5" r="1" fill="#d4af37"/>
-                <circle cx="10.5" cy="7.5" r="1" fill="#d4af37"/>
-                <circle cx="7.5" cy="7.5" r="0.4" fill="#1a1a2e"/>
-                <circle cx="10.5" cy="7.5" r="0.4" fill="#1a1a2e"/>
-                <path d="M8 10 Q9 11 10 10" stroke={item.inStock ? "#2d5a3d" : "#8b3a3a"} strokeWidth="0.8" fill="none"/>
-                <ellipse cx="9" cy="15" rx="2.5" ry="4" fill={item.inStock ? "#1e5631" : "#5c1a1a"}/>
-                <path d="M4 10 Q2 8 3 5" stroke={item.inStock ? "#3d8b5a" : "#8b5a5a"} strokeWidth="1" fill="none" opacity="0.6"/>
-                <path d="M14 10 Q16 8 15 5" stroke={item.inStock ? "#3d8b5a" : "#8b5a5a"} strokeWidth="1" fill="none" opacity="0.6"/>
-              </svg>
-            </div>
-            {item.inStock ? (
-              <Badge className="mr-3 border-2 border-[#1e5631] bg-gradient-to-br from-[#0a1f10] to-[#051008] text-[#4ade80] shadow-lg">
-                <CheckCircle2 className="mr-1 h-3 w-3" />
-                In Stock
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="mr-3 border-2 border-[#740001] bg-gradient-to-br from-[#2a0a0a] to-[#1a0505] text-[#f87171] shadow-lg">
-                <XCircle className="mr-1 h-3 w-3" />
-                Out of Stock
-              </Badge>
-            )}
-          </div>
-          
-          {/* Quantity Tag with Niffler */}
-          <div className="relative">
-            <div className="absolute -right-1 -top-0.5 z-10">
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {/* Niffler */}
-                <ellipse cx="9" cy="9" rx="5" ry="4" fill="#2d1f1a"/>
-                <ellipse cx="4" cy="8" rx="3" ry="2" fill="#2d1f1a"/>
-                <circle cx="5" cy="7" r="0.8" fill="#d4af37"/>
-                <circle cx="5" cy="7" r="0.3" fill="#1a1a2e"/>
-                <ellipse cx="2" cy="9" rx="1.5" ry="0.8" fill="#5c4a3d"/>
-                <ellipse cx="12" cy="12" rx="2" ry="1.5" fill="#2d1f1a"/>
-                <ellipse cx="6" cy="12" rx="2" ry="1.5" fill="#2d1f1a"/>
-                <circle cx="14" cy="6" r="1.5" fill="#d4af37" opacity="0.6"/>
-              </svg>
-            </div>
-            <Badge className="mr-3 border-2 border-[#4a1f6b] bg-gradient-to-br from-[#1a0a2a] to-[#100520] text-[#c4a0e8] shadow-lg">
-              <Package className="mr-1 h-3 w-3" />
-              {item.quantity} {item.unit} left
+
+        {/* Top Right Tags */}
+        <div className="absolute right-3 top-3 flex flex-col items-end gap-1.5">
+          {item.inStock ? (
+            <Badge className="rounded-full bg-emerald-600/95 px-2.5 py-0.5 text-[11px] font-medium text-white shadow-sm backdrop-blur-md">
+              <CheckCircle2 className="mr-1 h-3 w-3" />
+              In Stock
             </Badge>
-          </div>
+          ) : (
+            <Badge variant="destructive" className="rounded-full px-2.5 py-0.5 text-[11px] font-medium shadow-sm">
+              <XCircle className="mr-1 h-3 w-3" />
+              Sold Out
+            </Badge>
+          )}
+
+          <Badge
+            variant="secondary"
+            className="rounded-full border border-border/80 bg-card/90 px-2.5 py-0.5 text-[11px] font-medium text-foreground shadow-sm backdrop-blur-md"
+          >
+            <Package className="mr-1 h-3 w-3 text-primary" />
+            {item.quantity} {item.unit} left
+          </Badge>
         </div>
-        
+
         {/* Rating badge on hover */}
-        <div className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
-          <Star className="h-3 w-3 fill-[#d4af37] text-[#d4af37]" />
+        <div className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-black/75 px-2.5 py-1 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+          <Star className="h-3 w-3 fill-emerald-400 text-emerald-400" />
           {item.freshness.toFixed(1)}/10 Freshness
         </div>
       </div>
-      
-      <CardContent className="p-4">
-        <h3 className="mb-1 font-semibold text-foreground" style={{ fontFamily: 'Cinzel, serif' }}>
-          {item.name}
-        </h3>
-        <p className="mb-3 text-sm text-muted-foreground line-clamp-2" style={{ fontFamily: 'Lora, serif' }}>
+
+      <CardContent className="flex-1 p-5">
+        <div className="mb-1.5 flex items-start justify-between gap-2">
+          <h3 className="text-lg font-bold tracking-tight text-foreground">
+            {item.name}
+          </h3>
+          <div className="shrink-0 text-right">
+            <span className="text-lg font-bold text-primary">Rs. {item.price.toFixed(0)}</span>
+            <span className="text-xs text-muted-foreground">/{item.unit}</span>
+          </div>
+        </div>
+
+        <p className="mb-4 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
           {item.description}
         </p>
-        
-        <div className="mb-3">
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Freshness Rating</p>
+
+        <div className="mb-4">
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Freshness Rating
+          </p>
           <FreshnessBar freshness={item.freshness} />
-        </div>
-        
-        <div className="flex items-baseline gap-1">
-          <span className="text-xl font-bold text-[#d4af37]">Rs. {item.price.toFixed(0)}</span>
-          <span className="text-sm text-muted-foreground">/{item.unit}</span>
         </div>
 
         {/* Seller Info */}
-        <div className="mt-3 space-y-1.5 rounded-lg border border-[#d4af37]/20 bg-[#d4af37]/5 p-2.5">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <User className="h-3 w-3 text-[#d4af37]" />
-            <span>{item.sellerName}</span>
+        <div className="space-y-1.5 rounded-2xl border border-border/70 bg-muted/50 p-3">
+          <div className="flex items-center gap-2 text-xs text-foreground/85">
+            <User className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <span className="truncate font-medium">{item.sellerName}</span>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Phone className="h-3 w-3 text-[#d4af37]" />
+            <Phone className="h-3.5 w-3.5 shrink-0 text-primary" />
             <span>+91 {item.sellerPhone}</span>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <MapPin className="h-3 w-3 text-[#d4af37]" />
-            <span>{item.sellerAddress}</span>
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <span className="truncate">{item.sellerAddress}</span>
           </div>
           {item.distanceKm !== undefined && (
-            <div className="flex items-center gap-2 text-xs text-green-400">
-              <Navigation className="h-3 w-3" />
+            <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+              <Navigation className="h-3.5 w-3.5 shrink-0" />
               <span>{item.distanceKm} km away</span>
             </div>
           )}
         </div>
-        
+
         {item.category === "non-climacteric" && (
-          <p className="mt-2 text-xs text-sky-400/80 italic" style={{ fontFamily: 'Lora, serif' }}>
-            *Availability on first come first serve basis
+          <p className="mt-2.5 text-[11px] italic text-sky-700 dark:text-sky-400">
+            *First-come, first-served availability at peak ripeness
           </p>
         )}
       </CardContent>
-      
-      <CardFooter className="p-4 pt-0">
-        <Button 
-          className="w-full bg-[#d4af37] text-[#1a1a2e] hover:bg-[#c4a030] disabled:opacity-50" 
+
+      <CardFooter className="p-5 pt-0">
+        <Button
+          className="w-full rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           disabled={!item.inStock || !canAddMore}
           onClick={() => onAddToCart(item)}
         >
@@ -294,37 +238,47 @@ function FruitCard({ item, onAddToCart, cartQuantity }: { item: MarketplaceItem;
 function CategoryInfoBanner({ category }: { category: "climacteric" | "non-climacteric" }) {
   const info = getCategoryInfo(category)
   const isClimacteric = category === "climacteric"
-  
+
   return (
-    <div className={`rounded-xl border p-6 ${
-      isClimacteric 
-        ? "border-amber-500/30 bg-amber-500/10" 
-        : "border-sky-500/30 bg-sky-500/10"
-    }`}>
+    <div
+      className={`rounded-2xl border p-5 ${
+        isClimacteric
+          ? "border-amber-200 bg-amber-50/70 dark:border-amber-500/30 dark:bg-amber-500/10"
+          : "border-sky-200 bg-sky-50/70 dark:border-sky-500/30 dark:bg-sky-500/10"
+      }`}
+    >
       <div className="flex items-start gap-4">
-        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${
-          isClimacteric 
-            ? "border-amber-500/50 bg-amber-500/20" 
-            : "border-sky-500/50 bg-sky-500/20"
-        }`}>
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+            isClimacteric
+              ? "bg-amber-100 dark:bg-amber-500/20"
+              : "bg-sky-100 dark:bg-sky-500/20"
+          }`}
+        >
           {isClimacteric ? (
-            <Sun className="h-5 w-5 text-amber-400" />
+            <Sun className="h-5 w-5 text-amber-600 dark:text-amber-400" />
           ) : (
-            <Snowflake className="h-5 w-5 text-sky-400" />
+            <Snowflake className="h-5 w-5 text-sky-600 dark:text-sky-400" />
           )}
         </div>
         <div className="flex-1">
-          <h2 className={`mb-1 font-semibold ${isClimacteric ? "text-amber-300" : "text-sky-300"}`} style={{ fontFamily: 'Cinzel, serif' }}>
+          <h2
+            className={`mb-1 text-base font-bold ${
+              isClimacteric ? "text-amber-900 dark:text-amber-300" : "text-sky-900 dark:text-sky-300"
+            }`}
+          >
             {info.title}
           </h2>
-          <p className="mb-3 text-sm text-muted-foreground" style={{ fontFamily: 'Lora, serif' }}>
-            {info.description}
-          </p>
+          <p className="mb-3 text-sm text-muted-foreground">{info.description}</p>
           <div className="flex items-start gap-2">
-            <Info className={`mt-0.5 h-4 w-4 shrink-0 ${isClimacteric ? "text-amber-400" : "text-sky-400"}`} />
+            <Info
+              className={`mt-0.5 h-4 w-4 shrink-0 ${
+                isClimacteric ? "text-amber-600 dark:text-amber-400" : "text-sky-600 dark:text-sky-400"
+              }`}
+            />
             <div className="space-y-1">
               {info.tips.map((tip, index) => (
-                <p key={index} className="text-xs text-muted-foreground" style={{ fontFamily: 'Lora, serif' }}>
+                <p key={index} className="text-xs text-muted-foreground">
                   {tip}
                 </p>
               ))}
@@ -336,7 +290,13 @@ function CategoryInfoBanner({ category }: { category: "climacteric" | "non-clima
   )
 }
 
-function CartSheet({ cartItems, onUpdateQuantity, onRemove, onProceedToPayment, cartTotal }: {
+function CartSheet({
+  cartItems,
+  onUpdateQuantity,
+  onRemove,
+  onProceedToPayment,
+  cartTotal,
+}: {
   cartItems: CartItem[]
   onUpdateQuantity: (id: string, qty: number) => void
   onRemove: (id: string) => void
@@ -348,15 +308,17 @@ function CartSheet({ cartItems, onUpdateQuantity, onRemove, onProceedToPayment, 
       <div className="flex-1 overflow-auto py-4">
         {cartItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <ShoppingCart className="mb-4 h-12 w-12 text-muted-foreground/40" />
-            <p className="text-lg font-medium text-muted-foreground">Your cart is empty</p>
-            <p className="text-sm text-muted-foreground/70">Add some fruits to get started</p>
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary text-primary">
+              <ShoppingCart className="h-6 w-6" />
+            </div>
+            <p className="text-base font-semibold text-foreground">Your cart is empty</p>
+            <p className="mt-1 text-xs text-muted-foreground">Add fresh fruits from the marketplace to get started</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {cartItems.map((item) => (
-              <div key={item.id} className="flex gap-3 rounded-lg border border-[#d4af37]/20 bg-secondary/30 p-3">
-                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md">
+              <div key={item.id} className="flex gap-3 rounded-2xl border border-border bg-muted/40 p-3">
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-muted">
                   <Image
                     src={item.image}
                     alt={item.name}
@@ -368,14 +330,14 @@ function CartSheet({ cartItems, onUpdateQuantity, onRemove, onProceedToPayment, 
                 <div className="flex flex-1 flex-col">
                   <div className="flex items-start justify-between">
                     <div>
-                      <h4 className="font-medium text-foreground">{item.name}</h4>
+                      <h4 className="font-semibold text-foreground">{item.name}</h4>
                       <p className="text-xs text-muted-foreground">Rs. {item.price}/{item.unit}</p>
-                      <p className="text-xs text-purple-400">Max: {item.maxQuantity} {item.unit}</p>
+                      <p className="text-xs text-primary">Available: {item.maxQuantity} {item.unit}</p>
                     </div>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 text-muted-foreground hover:text-red-400"
+                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
                       onClick={() => onRemove(item.id)}
                     >
                       <X className="h-4 w-4" />
@@ -386,23 +348,23 @@ function CartSheet({ cartItems, onUpdateQuantity, onRemove, onProceedToPayment, 
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-7 w-7 border-[#d4af37]/30"
+                        className="h-7 w-7 rounded-full"
                         onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
                       >
                         <Minus className="h-3 w-3" />
                       </Button>
-                      <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+                      <span className="w-7 text-center text-sm font-semibold">{item.quantity}</span>
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-7 w-7 border-[#d4af37]/30"
+                        className="h-7 w-7 rounded-full"
                         onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
                         disabled={item.quantity >= item.maxQuantity}
                       >
                         <Plus className="h-3 w-3" />
                       </Button>
                     </div>
-                    <span className="font-semibold text-[#d4af37]">
+                    <span className="font-bold text-primary">
                       Rs. {(item.price * item.quantity).toFixed(0)}
                     </span>
                   </div>
@@ -412,19 +374,19 @@ function CartSheet({ cartItems, onUpdateQuantity, onRemove, onProceedToPayment, 
           </div>
         )}
       </div>
-      
+
       {cartItems.length > 0 && (
-        <div className="border-t border-[#d4af37]/20 pt-4">
+        <div className="border-t border-border pt-4">
           <div className="mb-4 flex items-center justify-between">
-            <span className="text-lg font-medium text-foreground">Total</span>
-            <span className="text-xl font-bold text-[#d4af37]">Rs. {cartTotal.toFixed(0)}</span>
+            <span className="text-base font-medium text-foreground">Order Total</span>
+            <span className="text-xl font-bold text-primary">Rs. {cartTotal.toFixed(0)}</span>
           </div>
-          <Button 
-            className="w-full bg-[#d4af37] text-[#1a1a2e] hover:bg-[#c4a030]"
+          <Button
+            className="w-full rounded-full bg-primary py-6 text-base font-semibold text-primary-foreground hover:bg-primary/90"
             onClick={onProceedToPayment}
           >
-            <Wand2 className="mr-2 h-4 w-4" />
-            Proceed to Payment
+            <QrCode className="mr-2 h-4 w-4" />
+            Generate Pickup QR
           </Button>
         </div>
       )}
@@ -432,91 +394,87 @@ function CartSheet({ cartItems, onUpdateQuantity, onRemove, onProceedToPayment, 
   )
 }
 
-// Harry Potter themed payment page
-function PaymentDialog({ isOpen, onClose, order }: { isOpen: boolean; onClose: () => void; order: PurchaseOrder | null }) {
+function PaymentDialog({
+  isOpen,
+  onClose,
+  order,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  order: PurchaseOrder | null
+}) {
   if (!order) return null
-  
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl border-2 border-[#d4af37] bg-gradient-to-b from-[#1a0a0a] via-[#2d1810] to-[#1a0a0a] text-white">
-        {/* Magical background overlay */}
-        <div className="absolute inset-0 overflow-hidden rounded-lg">
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCI+CjxyZWN0IHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgZmlsbD0idHJhbnNwYXJlbnQiLz4KPHBhdGggZD0iTTAgMzBMMzAgMEw2MCAzMEwzMCA2MFoiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2Q0YWYzNyIgc3Ryb2tlLW9wYWNpdHk9IjAuMDUiIHN0cm9rZS13aWR0aD0iMSIvPgo8L3N2Zz4=')] opacity-30" />
-          <div className="absolute -top-20 -right-20 h-40 w-40 rounded-full bg-[#d4af37]/10 blur-3xl" />
-          <div className="absolute -bottom-20 -left-20 h-40 w-40 rounded-full bg-amber-500/10 blur-3xl" />
-        </div>
-        
-        <DialogHeader className="relative text-center">
-          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full border-2 border-[#d4af37] bg-gradient-to-br from-[#5d1a1a] to-[#7a2d2d]">
-            <Wand2 className="h-10 w-10 text-[#d4af37]" />
+      <DialogContent className="max-w-lg rounded-3xl border-border bg-card text-card-foreground">
+        <DialogHeader className="text-center">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary text-primary">
+            <ShieldCheck className="h-7 w-7" />
           </div>
-          <DialogTitle className="text-3xl text-[#d4af37]" style={{ fontFamily: 'Cinzel, serif' }}>
-            Order Enchanted!
+          <DialogTitle className="text-2xl font-bold text-foreground">
+            Order Confirmed
           </DialogTitle>
-          <DialogDescription className="text-amber-200/80" style={{ fontFamily: 'Lora, serif' }}>
-            Your magical purchase has been initiated. Present these enchanted seals to complete the transaction.
+          <DialogDescription className="text-muted-foreground">
+            Show this pickup verification QR code to the grocer when collecting your produce.
           </DialogDescription>
         </DialogHeader>
-        
-        <div className="relative space-y-6 py-4">
+
+        <div className="space-y-5 py-2">
           {/* Order Summary */}
-          <div className="rounded-xl border border-[#d4af37]/30 bg-black/30 p-4">
-            <h3 className="mb-3 text-lg font-semibold text-[#d4af37]" style={{ fontFamily: 'Cinzel, serif' }}>
-              Order Scroll
+          <div className="rounded-2xl border border-border bg-muted/40 p-4">
+            <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-muted-foreground">
+              Order Summary
             </h3>
             <div className="space-y-2 text-sm">
               {order.items.map((item, index) => (
-                <div key={index} className="flex justify-between text-amber-100/80">
-                  <span>{item.name} x{item.quantity}</span>
-                  <span>Rs. {(item.price * item.quantity).toFixed(0)}</span>
+                <div key={index} className="flex justify-between text-foreground">
+                  <span>{item.name} × {item.quantity}</span>
+                  <span className="font-medium">Rs. {(item.price * item.quantity).toFixed(0)}</span>
                 </div>
               ))}
-              <div className="mt-3 border-t border-[#d4af37]/30 pt-3 flex justify-between font-bold text-[#d4af37]">
-                <span>Total Galleons</span>
+              <div className="mt-3 flex justify-between border-t border-border pt-3 text-base font-bold text-primary">
+                <span>Total Amount</span>
                 <span>Rs. {order.total.toFixed(0)}</span>
               </div>
             </div>
           </div>
-          
+
           {/* QR Code */}
-          <div className="flex justify-center">
-            {/* Buyer QR */}
-            <div className="rounded-xl border border-[#d4af37]/30 bg-black/30 p-6 text-center max-w-sm w-full">
-              <h4 className="mb-4 text-lg font-semibold text-amber-300" style={{ fontFamily: 'Cinzel, serif' }}>
-                Your Payment Seal
-              </h4>
-              <div className="mx-auto mb-4 inline-block rounded-lg bg-white p-4">
-                <QRCode value={order.buyerQR} size={180} />
-              </div>
-              <p className="text-sm text-amber-200/60" style={{ fontFamily: 'Lora, serif' }}>
-                Present this seal to the merchant to complete your purchase
-              </p>
-              <p className="mt-2 text-xs text-[#d4af37] font-mono break-all">
-                {order.buyerQR}
-              </p>
-            </div>
-          </div>
-          
-          {/* Instructions */}
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-            <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-300">
-              <Sparkles className="h-4 w-4" />
-              How the Magic Works
+          <div className="rounded-2xl border border-border bg-background p-6 text-center">
+            <h4 className="mb-3 text-sm font-semibold text-foreground">
+              Pickup Verification QR
             </h4>
-            <ul className="space-y-1 text-xs text-amber-200/70" style={{ fontFamily: 'Lora, serif' }}>
-              <li>1. Show your Payment Seal to the merchant when collecting produce</li>
-              <li>2. Merchant scans your seal to verify the purchase</li>
-              <li>3. Once verified, the transaction is complete</li>
-              <li>4. Enjoy your fresh produce!</li>
+            <div className="mx-auto mb-3 inline-block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+              <QRCode value={order.buyerQR} size={168} />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Present this code at pickup to verify your reservation
+            </p>
+            <p className="mt-2 break-all font-mono text-[11px] text-primary">
+              {order.buyerQR}
+            </p>
+          </div>
+
+          {/* Instructions */}
+          <div className="rounded-2xl border border-primary/20 bg-secondary/50 p-4">
+            <h4 className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-primary">
+              <CheckCircle2 className="h-4 w-4" />
+              How Pickup Works
+            </h4>
+            <ul className="space-y-1 text-xs text-muted-foreground">
+              <li>1. Visit the grocer&apos;s pickup address shown on your listing</li>
+              <li>2. Present this verification QR code at the counter</li>
+              <li>3. Complete payment and collect your fresh produce</li>
             </ul>
           </div>
-          
-          <Button 
+
+          <Button
             onClick={onClose}
-            className="w-full bg-[#d4af37] text-[#1a1a2e] hover:bg-[#c4a030]"
+            className="w-full rounded-full bg-primary py-5 font-semibold text-primary-foreground hover:bg-primary/90"
           >
             <CheckCircle2 className="mr-2 h-4 w-4" />
-            Close & Continue Shopping
+            Done & Continue Shopping
           </Button>
         </div>
       </DialogContent>
@@ -524,58 +482,125 @@ function PaymentDialog({ isOpen, onClose, order }: { isOpen: boolean; onClose: (
   )
 }
 
-// Location Status Banner Component
-function LocationStatusBanner({ 
-  isTracking, 
-  location, 
-  locationError, 
+function LocationStatusBanner({
+  isTracking,
+  location,
+  locationError,
   isLoading,
+  isInNoidaRegion,
   listingsCount,
-  onStartTracking 
-}: { 
+  onStartTracking,
+  onSelectPreset,
+}: {
   isTracking: boolean
-  location: { latitude: number; longitude: number } | null
+  location: { latitude: number; longitude: number; label?: string } | null
   locationError: string | null
   isLoading: boolean
+  isInNoidaRegion: boolean
   listingsCount: number
   onStartTracking: () => void
+  onSelectPreset: (lat: number, lng: number, label: string) => void
 }) {
-  if (locationError) {
+  if (location && !isInNoidaRegion) {
     return (
-      <div className="mb-6 flex items-center gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4">
-        <AlertCircle className="h-5 w-5 text-red-400" />
-        <div className="flex-1">
-          <p className="text-sm font-medium text-red-300">Location Access Required</p>
-          <p className="text-xs text-red-400/80">{locationError}</p>
+      <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex flex-1 items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-300">
+                Outside Noida Region
+              </p>
+              <p className="text-xs text-amber-800/85 dark:text-amber-200/80">
+                TerraLoop geofencing is currently limited to Noida ({location.latitude.toFixed(4)}, {location.longitude.toFixed(4)} is outside Noida). Select a Noida sector below to view local grocer listings:
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="self-start rounded-full sm:self-center"
+            onClick={onStartTracking}
+          >
+            <Locate className="mr-1.5 h-3.5 w-3.5" />
+            Retry GPS
+          </Button>
         </div>
-        <Button 
-          variant="outline" 
-          size="sm"
-          className="border-red-500/30 text-red-300 hover:bg-red-500/10"
-          onClick={onStartTracking}
-        >
-          <Locate className="mr-2 h-4 w-4" />
-          Retry
-        </Button>
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-amber-200/70 pt-3 dark:border-amber-500/20">
+          {NOIDA_SECTORS.map((sector) => (
+            <button
+              key={sector.label}
+              type="button"
+              onClick={() => onSelectPreset(sector.latitude, sector.longitude, sector.label)}
+              className="rounded-full border border-amber-300 bg-white/85 px-3 py-1 text-xs font-medium text-amber-900 transition-colors hover:bg-white dark:border-amber-500/40 dark:bg-amber-950/50 dark:text-amber-200"
+            >
+              {sector.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (locationError && !location) {
+    return (
+      <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex flex-1 items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-300">
+                Location Access Unavailable
+              </p>
+              <p className="text-xs text-amber-800/85 dark:text-amber-200/80">{locationError}</p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="self-start rounded-full sm:self-center"
+            onClick={onStartTracking}
+          >
+            <Locate className="mr-1.5 h-3.5 w-3.5" />
+            Retry GPS
+          </Button>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-amber-200/70 pt-3 dark:border-amber-500/20">
+          <span className="text-[11px] font-medium text-amber-900/80 dark:text-amber-200/80">
+            Select a Noida sector (2.5 km radius):
+          </span>
+          {NOIDA_SECTORS.map((sector) => (
+            <button
+              key={sector.label}
+              type="button"
+              onClick={() => onSelectPreset(sector.latitude, sector.longitude, sector.label)}
+              className="rounded-full border border-amber-300 bg-white/80 px-2.5 py-1 text-[11px] font-medium text-amber-900 transition-colors hover:bg-white dark:border-amber-500/40 dark:bg-amber-950/50 dark:text-amber-200"
+            >
+              {sector.label}
+            </button>
+          ))}
+        </div>
       </div>
     )
   }
 
   if (!isTracking || !location) {
     return (
-      <div className="mb-6 flex items-center gap-3 rounded-xl border border-[#d4af37]/30 bg-[#d4af37]/10 p-4">
-        <Navigation className="h-5 w-5 text-[#d4af37]" />
-        <div className="flex-1">
-          <p className="text-sm font-medium text-[#d4af37]">Enable Location for Nearby Listings</p>
-          <p className="text-xs text-[#d4af37]/80">See fresh produce from sellers near you</p>
+      <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-center">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+          <Navigation className="h-5 w-5" />
         </div>
-        <Button 
-          variant="outline" 
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-foreground">Enable Location for Noida Grocers</p>
+          <p className="text-xs text-muted-foreground">See fresh produce available within 2.5 km in Noida</p>
+        </div>
+        <Button
+          variant="outline"
           size="sm"
-          className="border-[#d4af37]/30 text-[#d4af37] hover:bg-[#d4af37]/10"
+          className="self-start rounded-full border-primary/30 text-primary hover:bg-secondary sm:self-center"
           onClick={onStartTracking}
         >
-          <Locate className="mr-2 h-4 w-4" />
+          <Locate className="mr-1.5 h-3.5 w-3.5" />
           Enable
         </Button>
       </div>
@@ -583,25 +608,43 @@ function LocationStatusBanner({
   }
 
   return (
-    <div className="mb-6 flex items-center gap-3 rounded-xl border border-green-500/30 bg-green-500/10 p-4">
-      {isLoading ? (
-        <Loader2 className="h-5 w-5 animate-spin text-green-400" />
-      ) : (
-        <Navigation className="h-5 w-5 text-green-400" />
-      )}
-      <div className="flex-1">
-        <p className="text-sm font-medium text-green-300">
-          {isLoading ? "Finding nearby sellers..." : `${listingsCount} seller${listingsCount !== 1 ? "s" : ""} found nearby`}
-        </p>
-        <p className="text-xs text-green-400/80">
-          Location: {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
-        </p>
+    <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-primary/20 bg-secondary/60 p-4 sm:flex-row sm:items-center">
+      <div className="flex flex-1 items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Navigation className="h-4 w-4" />
+          )}
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-foreground">
+            {isLoading
+              ? "Searching Noida grocers..."
+              : `Noida Geofence Active • ${listingsCount} nearby listing${listingsCount !== 1 ? "s" : ""} within 2.5 km`}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {location.label
+              ? `${location.label} (${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)})`
+              : `Noida Coordinates: ${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`}
+          </p>
+        </div>
       </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onStartTracking}
+        className="self-start rounded-full text-xs text-primary hover:bg-primary/10 sm:self-center"
+      >
+        <Locate className="mr-1.5 h-3.5 w-3.5" />
+        Refresh GPS
+      </Button>
     </div>
   )
 }
 
 export function MarketplaceContent({ initialCategory }: MarketplaceContentProps) {
+  const { isAuthenticated, user: authUser } = useUser()
   const [selectedCategory, setSelectedCategory] = useState<"all" | "climacteric" | "non-climacteric">(
     initialCategory || "all"
   )
@@ -611,49 +654,49 @@ export function MarketplaceContent({ initialCategory }: MarketplaceContentProps)
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrder | null>(null)
   const [isPaymentOpen, setIsPaymentOpen] = useState(false)
-  
-  // Use geofenced listings hook - fetches from Supabase based on user location
+  const [isAuthPromptOpen, setIsAuthPromptOpen] = useState(false)
+  const [authPromptItemName, setAuthPromptItemName] = useState<string | null>(null)
+  const [authPromptAction, setAuthPromptAction] = useState<string>("add items to your cart")
+
   const {
     marketplaceItems: geofencedItems,
     isLoading: isGeofenceLoading,
-    error: geofenceError,
     location,
     locationError,
     isLocationTracking,
+    isInNoidaRegion,
     startTracking,
+    setManualLocation,
   } = useMarketplaceListings({
-    radiusKm: 2.5, // 2.5km radius for nearby sellers only
+    radiusKm: 2.5,
     enableRealTimeTracking: true,
-    minMovementMeters: 100, // Only refetch if user moves 100m+
+    minMovementMeters: 100,
   })
-  
-  // Load cart on mount
+
   useEffect(() => {
     const loadCartData = () => {
       setCartItems(getCart())
       setCartCount(getCartCount())
       setCartTotal(getCartTotal())
     }
-    
+
     loadCartData()
-    
-    // Listen for cart updates
+
     const handleCartUpdate = () => {
       setCartItems(getCart())
       setCartCount(getCartCount())
       setCartTotal(getCartTotal())
     }
-    
+
     window.addEventListener("cartUpdated", handleCartUpdate)
     window.addEventListener("storage", loadCartData)
-    
+
     return () => {
       window.removeEventListener("cartUpdated", handleCartUpdate)
       window.removeEventListener("storage", loadCartData)
     }
   }, [])
-  
-  // Convert geofenced items to MarketplaceItem format (already done in the hook)
+
   const grocerItems: MarketplaceItem[] = geofencedItems.map(item => ({
     id: item.id,
     type: "listing" as const,
@@ -669,10 +712,9 @@ export function MarketplaceContent({ initialCategory }: MarketplaceContentProps)
     sellerName: item.sellerName,
     sellerPhone: item.sellerPhone,
     sellerAddress: item.sellerAddress,
-    distanceKm: item.distanceKm, // Include distance for display
+    distanceKm: item.distanceKm,
   }))
-  
-  // Convert default fruits to marketplace items
+
   const fruitItems: MarketplaceItem[] = fruits.map(fruit => ({
     id: fruit.id,
     type: "fruit" as const,
@@ -684,26 +726,32 @@ export function MarketplaceContent({ initialCategory }: MarketplaceContentProps)
     unit: fruit.unit,
     freshness: fruit.freshness,
     inStock: fruit.inStock,
-    quantity: 10, // Default fruits have plenty in stock
+    quantity: 10,
     sellerName: fruit.sellerName,
     sellerPhone: fruit.sellerPhone,
     sellerAddress: fruit.sellerAddress,
   }))
-  
-  // Combine all items (grocer listings first as they're freshly listed)
+
   const allItems = [...grocerItems, ...fruitItems]
-  
-  const filteredItems = selectedCategory === "all" 
-    ? allItems 
-    : allItems.filter(item => item.category === selectedCategory)
-  
-  // Get cart quantity for a specific item
+
+  const filteredItems =
+    selectedCategory === "all"
+      ? allItems
+      : allItems.filter(item => item.category === selectedCategory)
+
   const getCartQuantityForItem = (itemId: string): number => {
     const cartItem = cartItems.find(i => i.id === itemId)
     return cartItem?.quantity || 0
   }
-  
+
   const handleAddToCart = (item: MarketplaceItem) => {
+    if (!isAuthenticated) {
+      setAuthPromptItemName(item.name)
+      setAuthPromptAction("add items to your cart")
+      setIsAuthPromptOpen(true)
+      return
+    }
+
     const success = addToCart({
       id: item.id,
       type: item.type,
@@ -717,108 +765,122 @@ export function MarketplaceContent({ initialCategory }: MarketplaceContentProps)
       sellerAddress: item.sellerAddress,
       maxQuantity: item.quantity,
     })
-    
+
     if (!success) {
       alert("Cannot add more than available quantity")
     }
   }
-  
+
   const handleUpdateQuantity = (id: string, quantity: number) => {
+    if (!isAuthenticated) {
+      setAuthPromptItemName(null)
+      setAuthPromptAction("update your cart")
+      setIsAuthPromptOpen(true)
+      return
+    }
+
     const success = updateCartQuantity(id, quantity)
     if (!success && quantity > 0) {
       alert("Cannot exceed available quantity")
     }
   }
-  
+
   const handleRemoveFromCart = (id: string) => {
     removeFromCart(id)
   }
-  
+
   const handleProceedToPayment = () => {
-    const user = getCurrentUser()
-    if (!user) {
-      alert("Please login first")
+    if (!isAuthenticated) {
+      setIsCartOpen(false)
+      setAuthPromptItemName(null)
+      setAuthPromptAction("complete your purchase")
+      setIsAuthPromptOpen(true)
       return
     }
-    
-    // Initiate purchase - this removes items from marketplace immediately
-    const order = initiatePurchase(user.name, user.phone)
+
+    const user = getCurrentUser()
+    const buyerName = authUser?.name || user?.name || "Buyer"
+    const buyerPhone = authUser?.phone || user?.phone || ""
+    if (!buyerPhone) {
+      setIsCartOpen(false)
+      setAuthPromptItemName(null)
+      setAuthPromptAction("complete your purchase")
+      setIsAuthPromptOpen(true)
+      return
+    }
+
+    const order = initiatePurchase(buyerName, buyerPhone)
     if (order) {
       setPurchaseOrder(order)
       setIsPaymentOpen(true)
       setIsCartOpen(false)
     }
   }
-  
+
   const handleClosePayment = () => {
     setIsPaymentOpen(false)
     setPurchaseOrder(null)
   }
-  
+
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#0f0f1a]">
-      {/* Themed background */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#0f0f1a] to-[#1a1a2e]" />
-        <div className="absolute -top-40 -right-40 h-96 w-96 rounded-full bg-[#d4af37]/5 blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 h-96 w-96 rounded-full bg-[#d4af37]/5 blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-500/5 blur-3xl" />
-      </div>
-      
-      <div className="relative mx-auto max-w-6xl px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <Button variant="ghost" asChild className="mb-4 -ml-2 text-muted-foreground hover:text-foreground">
-            <Link href="/">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Home
-            </Link>
-          </Button>
-          
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#d4af37] bg-[#1a1a2e]">
-                <Sparkles className="h-6 w-6 text-[#d4af37]" />
+    <div className="bg-botanical-subtle min-h-screen bg-background">
+      {/* Header Hero */}
+      <div className="bg-botanical-hero text-white">
+        <div className="mx-auto max-w-6xl px-4 pb-12 pt-6 sm:px-6">
+          <div className="mb-6 flex items-center justify-between">
+            <Button
+              variant="ghost"
+              asChild
+              className="-ml-2 rounded-full text-white/90 hover:bg-white/15 hover:text-white"
+            >
+              <Link href={isAuthenticated ? "/dashboard" : "/"}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                {isAuthenticated ? "Back to Dashboard" : "Back to Home"}
+              </Link>
+            </Button>
+
+            <div className="flex items-center gap-2.5">
+              {!isAuthenticated && (
+                <Button
+                  variant="outline"
+                  asChild
+                  className="rounded-full border-white/25 bg-white/15 text-white hover:bg-white/25 hover:text-white"
+                >
+                  <Link href="/login?redirect=%2Fmarketplace">
+                    <LogIn className="mr-1.5 h-4 w-4" />
+                    Sign In
+                  </Link>
+                </Button>
+              )}
+              <div className="hidden items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 text-xs font-medium text-emerald-50 ring-1 ring-white/20 backdrop-blur-sm md:flex">
+                <Trophy className="h-3.5 w-3.5 text-emerald-200" />
+                <span>+5 XP per order</span>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-[#d4af37]" style={{ fontFamily: 'Cinzel, serif' }}>
-                  TerraLoop Marketplace
-                </h1>
-                <p className="text-muted-foreground" style={{ fontFamily: 'Lora, serif' }}>
-                  Fresh produce with guaranteed freshness
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              {/* XP indicator */}
-              <div className="hidden items-center gap-2 rounded-full border border-[#d4af37]/30 bg-secondary/50 px-4 py-2 text-sm md:flex">
-                <Trophy className="h-4 w-4 text-[#d4af37]" />
-                <span className="text-muted-foreground">+5 XP per purchase</span>
-              </div>
-              
-              {/* Cart Button */}
+
+              <ThemeToggle className="border-white/25 bg-white/10 text-white hover:bg-white/20 hover:border-white/40 [&_svg]:text-white" />
+
               <Sheet open={isCartOpen} onOpenChange={setIsCartOpen}>
                 <SheetTrigger asChild>
-                  <Button 
-                    variant="outline" 
-                    className="relative border-[#d4af37]/30 bg-[#1a1a2e] hover:bg-[#d4af37]/10"
+                  <Button
+                    variant="outline"
+                    className="relative rounded-full border-white/25 bg-white/15 text-white hover:bg-white/25 hover:text-white"
                   >
-                    <ShoppingCart className="h-5 w-5 text-[#d4af37]" />
+                    <ShoppingCart className="h-4 w-4" />
+                    <span className="ml-2 hidden text-sm font-medium sm:inline">Cart</span>
                     {cartCount > 0 && (
-                      <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#d4af37] text-xs font-bold text-[#1a1a2e]">
+                      <span className="ml-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-xs font-bold text-[#183d2b]">
                         {cartCount}
                       </span>
                     )}
                   </Button>
                 </SheetTrigger>
-                <SheetContent className="border-[#d4af37]/20 bg-[#1a1a2e]">
+                <SheetContent className="border-border bg-card">
                   <SheetHeader>
-                    <SheetTitle className="text-[#d4af37]" style={{ fontFamily: 'Cinzel, serif' }}>
+                    <SheetTitle className="text-lg font-bold text-foreground">
                       Your Cart
                     </SheetTitle>
                   </SheetHeader>
-                  <CartSheet 
+                  <CartSheet
                     cartItems={cartItems}
                     onUpdateQuantity={handleUpdateQuantity}
                     onRemove={handleRemoveFromCart}
@@ -829,74 +891,109 @@ export function MarketplaceContent({ initialCategory }: MarketplaceContentProps)
               </Sheet>
             </div>
           </div>
+
+          <div className="flex items-center gap-4">
+            <div className="flex h-13 w-13 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur-md">
+              <Leaf className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                TerraLoop Marketplace
+              </h1>
+              <p className="mt-0.5 text-sm text-emerald-100/85">
+                Fresh produce with AI-verified freshness scores and shelf-life ratings
+              </p>
+            </div>
+          </div>
         </div>
-        
-        {/* Location Status Banner */}
+      </div>
+
+      {/* Marketplace Content */}
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <LocationStatusBanner
           isTracking={isLocationTracking}
           location={location}
           locationError={locationError}
           isLoading={isGeofenceLoading}
+          isInNoidaRegion={isInNoidaRegion}
           listingsCount={geofencedItems.length}
           onStartTracking={startTracking}
+          onSelectPreset={setManualLocation}
         />
-        
+
         {/* Category Filter Tabs */}
         <div className="mb-6">
-          <Tabs 
-            value={selectedCategory} 
+          <Tabs
+            value={selectedCategory}
             onValueChange={(v) => setSelectedCategory(v as typeof selectedCategory)}
           >
-            <TabsList className="grid w-full max-w-md grid-cols-3 bg-secondary/50">
-              <TabsTrigger value="all" className="data-[state=active]:bg-[#d4af37] data-[state=active]:text-[#1a1a2e]">
-                All Fruits
+            <TabsList className="grid w-full max-w-md grid-cols-3 rounded-full bg-muted p-1">
+              <TabsTrigger
+                value="all"
+                className="rounded-full data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                All Produce
               </TabsTrigger>
-              <TabsTrigger value="climacteric" className="gap-1 data-[state=active]:bg-amber-500/30 data-[state=active]:text-amber-300">
-                <Sun className="h-3 w-3" />
+              <TabsTrigger
+                value="climacteric"
+                className="gap-1.5 rounded-full data-[state=active]:bg-amber-600 data-[state=active]:text-white"
+              >
+                <Sun className="h-3.5 w-3.5" />
                 Climacteric
               </TabsTrigger>
-              <TabsTrigger value="non-climacteric" className="gap-1 data-[state=active]:bg-sky-500/30 data-[state=active]:text-sky-300">
-                <Snowflake className="h-3 w-3" />
+              <TabsTrigger
+                value="non-climacteric"
+                className="gap-1.5 rounded-full data-[state=active]:bg-sky-600 data-[state=active]:text-white"
+              >
+                <Snowflake className="h-3.5 w-3.5" />
                 Non-Climacteric
               </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
-        
+
         {/* Category Info Banner */}
         {selectedCategory !== "all" && (
           <div className="mb-6">
             <CategoryInfoBanner category={selectedCategory} />
           </div>
         )}
-        
+
         {/* Fruit Grid */}
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredItems.map((item) => (
-            <FruitCard 
-              key={item.id} 
-              item={item} 
+            <FruitCard
+              key={item.id}
+              item={item}
               onAddToCart={handleAddToCart}
               cartQuantity={getCartQuantityForItem(item.id)}
             />
           ))}
         </div>
-        
+
         {filteredItems.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Sparkles className="mb-4 h-12 w-12 text-muted-foreground/40" />
-            <p className="text-lg font-medium text-muted-foreground">No fruits found</p>
-            <p className="text-sm text-muted-foreground/70">Try selecting a different category</p>
+            <Leaf className="mb-4 h-12 w-12 text-muted-foreground/40" />
+            <p className="text-lg font-semibold text-foreground">No fruits found</p>
+            <p className="text-sm text-muted-foreground">Try selecting a different category</p>
           </div>
         )}
       </div>
-      
-      {/* Payment Dialog */}
-      <PaymentDialog 
-        isOpen={isPaymentOpen} 
-        onClose={handleClosePayment} 
-        order={purchaseOrder} 
+
+      <PaymentDialog
+        isOpen={isPaymentOpen}
+        onClose={handleClosePayment}
+        order={purchaseOrder}
       />
+
+      <Suspense fallback={null}>
+        <AuthPromptDialog
+          isOpen={isAuthPromptOpen}
+          onClose={() => setIsAuthPromptOpen(false)}
+          itemName={authPromptItemName}
+          actionText={authPromptAction}
+        />
+      </Suspense>
     </div>
   )
 }

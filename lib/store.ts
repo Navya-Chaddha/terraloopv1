@@ -1,5 +1,7 @@
 "use client"
 
+import { getSavedLocation } from "@/lib/location"
+
 export interface GrocerListing {
   id: string
   fruitName: string
@@ -18,22 +20,23 @@ export interface GrocerListing {
   quantity: number
   listedAt: number
   sold: boolean
+  latitude?: number
+  longitude?: number
+  supabaseId?: string
 }
 
 const STORAGE_KEY = "terraloop_grocer_listings"
 
-// Dummy locations for grocers
+// Noida sector locations for grocers
 const DUMMY_LOCATIONS = [
-  "Sector 17, Chandigarh",
-  "MG Road, Bangalore",
-  "Connaught Place, Delhi",
-  "Bandra West, Mumbai",
-  "Park Street, Kolkata",
-  "Jubilee Hills, Hyderabad",
-  "Anna Nagar, Chennai",
-  "Koregaon Park, Pune",
-  "Ashram Road, Ahmedabad",
-  "Civil Lines, Jaipur",
+  "Sector 18, Noida",
+  "Sector 62, Noida",
+  "Sector 50, Noida",
+  "Sector 76, Noida",
+  "Sector 137, Noida",
+  "Sector 15, Noida",
+  "Sector 44, Noida",
+  "Sector 104, Noida",
 ]
 
 // Get random location
@@ -66,10 +69,13 @@ export function getListingsByCategory(category: "climacteric" | "non-climacteric
 }
 
 // Add a new listing
-export function addListing(listing: Omit<GrocerListing, "id" | "listedAt" | "sold" | "basePrice" | "priceMargin" | "quantity"> & { quantity?: number }): GrocerListing {
+export function addListing(
+  listing: Omit<GrocerListing, "id" | "listedAt" | "sold" | "basePrice" | "priceMargin" | "quantity"> & { quantity?: number }
+): GrocerListing {
   const basePrice = listing.price
   const priceMargin = 45 // Default margin of Rs 45
-  
+  const savedLoc = getSavedLocation()
+
   const newListing: GrocerListing = {
     ...listing,
     id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
@@ -78,12 +84,17 @@ export function addListing(listing: Omit<GrocerListing, "id" | "listedAt" | "sol
     basePrice,
     priceMargin,
     quantity: listing.quantity || 1,
+    latitude: listing.latitude ?? savedLoc?.latitude,
+    longitude: listing.longitude ?? savedLoc?.longitude,
   }
-  
+
   const listings = getAllListings()
   listings.push(newListing)
   localStorage.setItem(STORAGE_KEY, JSON.stringify(listings))
-  
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("marketplaceUpdated"))
+  }
+
   return newListing
 }
 
@@ -121,16 +132,24 @@ export function updateListingQuantity(listingId: string, quantity: number): Groc
   return listings[index]
 }
 
-// Purchase a listing (mark as sold)
-export function purchaseListing(listingId: string): GrocerListing | null {
+// Purchase a listing (reduce quantity or mark as sold)
+export function purchaseListing(listingId: string, quantityPurchased?: number): GrocerListing | null {
   const listings = getAllListings()
   const index = listings.findIndex(l => l.id === listingId)
-  
+
   if (index === -1) return null
-  
-  listings[index].sold = true
+
+  if (quantityPurchased && listings[index].quantity > quantityPurchased) {
+    listings[index].quantity -= quantityPurchased
+  } else {
+    listings[index].quantity = 0
+    listings[index].sold = true
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(listings))
-  
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("marketplaceUpdated"))
+  }
+
   return listings[index]
 }
 
@@ -323,10 +342,10 @@ export function initiatePurchase(buyerName: string, buyerPhone: string): Purchas
     createdAt: Date.now(),
   }
   
-  // Mark grocer listings as sold IMMEDIATELY when payment is initiated
+  // Update/mark grocer listings when payment is initiated
   cart.forEach(item => {
     if (item.type === "listing") {
-      purchaseListing(item.id)
+      purchaseListing(item.id, item.quantity)
     }
   })
   

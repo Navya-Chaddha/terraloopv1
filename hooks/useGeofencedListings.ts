@@ -2,9 +2,15 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { getSavedLocation, saveUserLocation } from "@/lib/location"
+import {
+  autoDetectLocation,
+  calculateDistanceKm,
+  getSavedLocation,
+  isWithinNoidaRegion,
+  saveUserLocation,
+} from "@/lib/location"
+import { getAvailableListings, type GrocerListing } from "@/lib/store"
 
-// Listing type from database
 export interface GeoListing {
   id: string
   fruit_name: string
@@ -25,13 +31,14 @@ export interface GeoListing {
   listed_at: string
   latitude: number
   longitude: number
-  distance_km: number
+  distance_km?: number
 }
 
 export interface GeoLocation {
   latitude: number
   longitude: number
   accuracy: number
+  label?: string
 }
 
 export interface UseGeofencedListingsOptions {
@@ -47,36 +54,67 @@ export interface UseGeofencedListingsReturn {
   location: GeoLocation | null
   locationError: string | null
   isLocationTracking: boolean
+  isInNoidaRegion: boolean
   refetch: () => Promise<void>
   startTracking: () => void
   stopTracking: () => void
+  setManualLocation: (latitude: number, longitude: number, label?: string) => void
 }
 
-// Calculate distance between two coordinates in meters using Haversine formula
 function calculateDistanceMeters(
   lat1: number,
   lon1: number,
   lat2: number,
   lon2: number
 ): number {
-  const R = 6371000 // Earth's radius in meters
-  const dLat = ((lat2 - lat1) * Math.PI) / 180
-  const dLon = ((lon2 - lon1) * Math.PI) / 180
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2)
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return R * c
+  return calculateDistanceKm(lat1, lon1, lat2, lon2) * 1000
+}
+
+function localListingToGeo(
+  listing: GrocerListing,
+  userLat?: number,
+  userLng?: number
+): GeoListing {
+  const hasCoords =
+    typeof listing.latitude === "number" && typeof listing.longitude === "number"
+  const hasUserLoc = typeof userLat === "number" && typeof userLng === "number"
+
+  const distanceKm =
+    hasCoords && hasUserLoc
+      ? calculateDistanceKm(userLat!, userLng!, listing.latitude!, listing.longitude!)
+      : hasUserLoc
+      ? 0
+      : undefined
+
+  return {
+    id: listing.id,
+    fruit_name: listing.fruitName,
+    category: listing.category,
+    freshness: listing.freshness,
+    shelf_life: listing.shelfLife || null,
+    verdict: listing.verdict || null,
+    images: listing.images || [],
+    recommended_uses: listing.recommendedUses || [],
+    grocer_name: listing.grocerName,
+    grocer_phone: listing.grocerPhone,
+    grocer_location: listing.grocerLocation,
+    price: listing.price,
+    base_price: listing.basePrice,
+    price_margin: listing.priceMargin,
+    quantity: listing.quantity || 1,
+    sold: listing.sold,
+    listed_at: new Date(listing.listedAt).toISOString(),
+    latitude: listing.latitude ?? userLat ?? 0,
+    longitude: listing.longitude ?? userLng ?? 0,
+    distance_km: distanceKm,
+  }
 }
 
 export function useGeofencedListings(
   options: UseGeofencedListingsOptions = {}
 ): UseGeofencedListingsReturn {
   const {
-    radiusKm = 10,
+    radiusKm = 2.5,
     enableRealTimeTracking = true,
     minMovementMeters = 100,
   } = options
@@ -88,33 +126,93 @@ export function useGeofencedListings(
   const [locationError, setLocationError] = useState<string | null>(null)
   const [isLocationTracking, setIsLocationTracking] = useState(false)
 
-  // Refs to track previous location and watch ID
   const lastFetchLocation = useRef<{ lat: number; lng: number } | null>(null)
   const watchIdRef = useRef<number | null>(null)
-  const supabase = useRef(createClient())
+  const locationRef = useRef<GeoLocation | null>(null)
+  const hasSupabaseConfig = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  )
+  const supabase = useRef(hasSupabaseConfig ? createClient() : null)
 
-  // Fetch listings from Supabase RPC
+  useEffect(() => {
+    locationRef.current = location
+  }, [location])
+
+  const isInNoidaRegion = location
+    ? isWithinNoidaRegion(location.latitude, location.longitude)
+    : false
+
   const fetchListings = useCallback(
-    async (lat: number, lng: number) => {
+    async (lat?: number, lng?: number) => {
       setIsLoading(true)
       setError(null)
 
       try {
-        const { data, error: rpcError } = await supabase.current.rpc(
-          "get_nearby_listings",
-          {
-            user_lat: lat,
-            user_lng: lng,
-            radius_km: radiusKm,
-          }
-        )
+        const hasCoords = typeof lat === "number" && typeof lng === "number"
 
-        if (rpcError) {
-          throw new Error(rpcError.message)
+        // Strict Noida-only geofencing: if user location is known and outside Noida, show no local grocer listings
+        if (hasCoords && !isWithinNoidaRegion(lat!, lng!)) {
+          setListings([])
+          lastFetchLocation.current = { lat: lat!, lng: lng! }
+          return
         }
 
-        setListings(data || [])
-        lastFetchLocation.current = { lat, lng }
+        // 1. Read local grocer listings from localStorage and apply Noida + radiusKm geofence
+        const localRaw = getAvailableListings()
+        const localGeo = localRaw
+          .filter((item) => {
+            if (typeof item.latitude === "number" && typeof item.longitude === "number") {
+              return isWithinNoidaRegion(item.latitude, item.longitude)
+            }
+            return true
+          })
+          .map((item) => localListingToGeo(item, lat, lng))
+          .filter((item) => {
+            if (!hasCoords) return true
+            if (typeof item.distance_km !== "number") return true
+            return item.distance_km <= radiusKm
+          })
+
+        // 2. Fetch nearby Noida listings from Supabase RPC if configured & inside Noida
+        let remoteGeo: GeoListing[] = []
+        if (supabase.current && hasCoords) {
+          const { data, error: rpcError } = await supabase.current.rpc(
+            "get_nearby_listings",
+            {
+              user_lat: lat,
+              user_lng: lng,
+              radius_km: radiusKm,
+            }
+          )
+          if (rpcError) {
+            setError(rpcError.message)
+          } else {
+            remoteGeo = ((data as GeoListing[]) || []).filter((item) =>
+              isWithinNoidaRegion(Number(item.latitude), Number(item.longitude))
+            )
+          }
+        }
+
+        // 3. Merge local + remote without duplicates
+        const syncedIds = new Set(
+          localRaw.map((l) => l.supabaseId).filter((id): id is string => Boolean(id))
+        )
+        const remoteIds = new Set(remoteGeo.map((r) => r.id))
+        const uniqueLocal = localGeo.filter(
+          (l) => !remoteIds.has(l.id) && !syncedIds.has(l.id)
+        )
+
+        const combined = [...uniqueLocal, ...remoteGeo].sort((a, b) => {
+          const distA = a.distance_km ?? Number.MAX_SAFE_INTEGER
+          const distB = b.distance_km ?? Number.MAX_SAFE_INTEGER
+          if (distA !== distB) return distA - distB
+          return new Date(b.listed_at).getTime() - new Date(a.listed_at).getTime()
+        })
+
+        setListings(combined)
+        if (hasCoords) {
+          lastFetchLocation.current = { lat: lat!, lng: lng! }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to fetch listings")
       } finally {
@@ -124,16 +222,18 @@ export function useGeofencedListings(
     [radiusKm]
   )
 
-  // Manual refetch function
   const refetch = useCallback(async () => {
-    if (location) {
-      await fetchListings(location.latitude, location.longitude)
-    }
-  }, [location, fetchListings])
+    const activeLoc = locationRef.current || getSavedLocation()
+    await fetchListings(activeLoc?.latitude, activeLoc?.longitude)
+  }, [fetchListings])
 
-  // Handle position update from geolocation
   const handlePositionUpdate = useCallback(
     (position: GeolocationPosition) => {
+      // Do not overwrite an explicitly chosen Noida preset if user selected one manually
+      if (locationRef.current?.label) {
+        return
+      }
+
       const newLocation: GeoLocation = {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
@@ -141,9 +241,10 @@ export function useGeofencedListings(
       }
 
       setLocation(newLocation)
+      locationRef.current = newLocation
       setLocationError(null)
-      
-      // Save to localStorage for persistence across pages
+      setIsLocationTracking(true)
+
       saveUserLocation({
         latitude: newLocation.latitude,
         longitude: newLocation.longitude,
@@ -151,7 +252,6 @@ export function useGeofencedListings(
         timestamp: Date.now(),
       })
 
-      // Check if user has moved more than threshold
       const shouldFetch =
         !lastFetchLocation.current ||
         calculateDistanceMeters(
@@ -168,75 +268,88 @@ export function useGeofencedListings(
     [fetchListings, minMovementMeters]
   )
 
-  // Handle geolocation errors
-  const handlePositionError = useCallback((error: GeolocationPositionError) => {
-    let errorMessage: string
-
-    switch (error.code) {
-      case error.PERMISSION_DENIED:
-        errorMessage = "Location access denied. Please enable location permissions."
-        break
-      case error.POSITION_UNAVAILABLE:
-        errorMessage = "Location information is unavailable."
-        break
-      case error.TIMEOUT:
-        errorMessage = "Location request timed out."
-        break
-      default:
-        errorMessage = "An unknown error occurred while getting location."
-    }
-
-    setLocationError(errorMessage)
-  }, [])
-
-  // Start tracking location
-  const startTracking = useCallback(() => {
-    if (!navigator.geolocation) {
-      setLocationError("Geolocation is not supported by your browser")
-      return
-    }
-
-    if (watchIdRef.current !== null) {
-      return // Already tracking
-    }
-
-    setIsLocationTracking(true)
-
-    // Get initial position
-    navigator.geolocation.getCurrentPosition(
-      handlePositionUpdate,
-      handlePositionError,
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      }
-    )
-
-    // Start watching position if real-time tracking is enabled
-    if (enableRealTimeTracking) {
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        handlePositionUpdate,
-        handlePositionError,
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 5000, // Accept cached position up to 5 seconds old
-        }
-      )
-    }
-  }, [handlePositionUpdate, handlePositionError, enableRealTimeTracking])
-
-  // Stop tracking location
   const stopTracking = useCallback(() => {
-    if (watchIdRef.current !== null) {
+    if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
       navigator.geolocation.clearWatch(watchIdRef.current)
       watchIdRef.current = null
     }
     setIsLocationTracking(false)
   }, [])
 
-  // Load saved location on mount (separate from tracking effect)
+  const startTracking = useCallback(() => {
+    setLocationError(null)
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocationError("Geolocation is not supported by your browser")
+      return
+    }
+
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current)
+      watchIdRef.current = null
+    }
+
+    setIsLocationTracking(true)
+
+    autoDetectLocation()
+      .then((detected) => {
+        const geoLoc: GeoLocation = {
+          latitude: detected.latitude,
+          longitude: detected.longitude,
+          accuracy: detected.accuracy,
+          label: detected.label,
+        }
+        setLocation(geoLoc)
+        locationRef.current = geoLoc
+        setLocationError(null)
+        fetchListings(geoLoc.latitude, geoLoc.longitude)
+      })
+      .catch((err) => {
+        if (!locationRef.current) {
+          setIsLocationTracking(false)
+          setLocationError(err instanceof Error ? err.message : "Unable to detect location")
+        }
+      })
+
+    if (enableRealTimeTracking) {
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        handlePositionUpdate,
+        () => {
+          // Non-fatal watch update error
+        },
+        {
+          enableHighAccuracy: false,
+          timeout: 15000,
+          maximumAge: 60000,
+        }
+      )
+    }
+  }, [enableRealTimeTracking, fetchListings, handlePositionUpdate])
+
+  const setManualLocation = useCallback(
+    (latitude: number, longitude: number, label?: string) => {
+      const manual: GeoLocation = {
+        latitude,
+        longitude,
+        accuracy: 100,
+        label,
+      }
+      saveUserLocation({
+        latitude,
+        longitude,
+        accuracy: 100,
+        timestamp: Date.now(),
+        label,
+      })
+      setLocation(manual)
+      locationRef.current = manual
+      setLocationError(null)
+      setIsLocationTracking(true)
+      fetchListings(latitude, longitude)
+    },
+    [fetchListings]
+  )
+
   useEffect(() => {
     const savedLocation = getSavedLocation()
     if (savedLocation) {
@@ -244,18 +357,20 @@ export function useGeofencedListings(
         latitude: savedLocation.latitude,
         longitude: savedLocation.longitude,
         accuracy: savedLocation.accuracy,
+        label: savedLocation.label,
       }
       setLocation(geoLocation)
+      locationRef.current = geoLocation
       setIsLocationTracking(true)
-      // Fetch listings immediately with saved location
       fetchListings(savedLocation.latitude, savedLocation.longitude)
+    } else {
+      fetchListings()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // Only run on mount
-  
-  // Start real-time tracking for location updates
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
-    if (enableRealTimeTracking) {
+    if (enableRealTimeTracking && !locationRef.current?.label) {
       startTracking()
     }
 
@@ -264,16 +379,19 @@ export function useGeofencedListings(
     }
   }, [enableRealTimeTracking, startTracking, stopTracking])
 
-  // Listen for marketplace updates (when items are purchased)
   useEffect(() => {
-    const handleMarketplaceUpdate = () => {
+    const handleRefresh = () => {
       refetch()
     }
 
-    window.addEventListener("marketplaceUpdated", handleMarketplaceUpdate)
+    window.addEventListener("marketplaceUpdated", handleRefresh)
+    window.addEventListener("locationUpdated", handleRefresh)
+    window.addEventListener("storage", handleRefresh)
 
     return () => {
-      window.removeEventListener("marketplaceUpdated", handleMarketplaceUpdate)
+      window.removeEventListener("marketplaceUpdated", handleRefresh)
+      window.removeEventListener("locationUpdated", handleRefresh)
+      window.removeEventListener("storage", handleRefresh)
     }
   }, [refetch])
 
@@ -284,17 +402,17 @@ export function useGeofencedListings(
     location,
     locationError,
     isLocationTracking,
+    isInNoidaRegion,
     refetch,
     startTracking,
     stopTracking,
+    setManualLocation,
   }
 }
 
-// Helper hook to convert GeoListing to the existing MarketplaceItem format
 export function useMarketplaceListings(options?: UseGeofencedListingsOptions) {
   const geofencedData = useGeofencedListings(options)
 
-  // Convert GeoListing to MarketplaceItem format for easy drop-in replacement
   const marketplaceItems = geofencedData.listings.map((listing) => ({
     id: listing.id,
     type: "listing" as const,

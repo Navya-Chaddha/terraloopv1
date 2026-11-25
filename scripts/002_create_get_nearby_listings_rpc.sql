@@ -60,6 +60,10 @@ BEGIN
   FROM listings l
   WHERE 
     l.sold = FALSE
+    AND l.latitude BETWEEN 28.45 AND 28.66
+    AND l.longitude BETWEEN 77.29 AND 77.48
+    AND user_lat BETWEEN 28.45 AND 28.66
+    AND user_lng BETWEEN 77.29 AND 77.48
     AND ST_DWithin(
       l.location,
       ST_SetSRID(ST_MakePoint(user_lng, user_lat), 4326)::geography,

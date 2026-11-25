@@ -1,16 +1,35 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { ArrowLeft, Phone, Shield, Sparkles, Loader2, MapPin, CheckCircle2 } from "lucide-react"
+import { useState, useRef, useEffect, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { ArrowLeft, ArrowRight, Phone, Shield, Loader2, MapPin, CheckCircle2, LogOut } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { autoDetectLocation, getSavedLocation, type UserLocation } from "@/lib/location"
 import { useUser } from "@/contexts/UserContext"
 
-export default function LoginPage() {
+function getSafeRedirect(redirectParam: string | null): string | null {
+  if (!redirectParam) return null
+  if (redirectParam.startsWith("/") && !redirectParam.startsWith("//")) {
+    return redirectParam
+  }
+  return null
+}
+
+function LoginPageContent() {
   const router = useRouter()
-  const { login, verifyOTP, isAuthenticated, isLoading: isAuthLoading, currentLocation, isLocationTracking, startLocationTracking } = useUser()
+  const searchParams = useSearchParams()
+  const redirectTarget = getSafeRedirect(searchParams.get("redirect"))
+
+  const {
+    user,
+    login,
+    verifyOTP,
+    logout,
+    isAuthenticated,
+    isLoading: isAuthLoading,
+    startLocationTracking,
+  } = useUser()
   const [step, setStep] = useState<"phone" | "otp">("phone")
   const [phoneNumber, setPhoneNumber] = useState("")
   const [otp, setOtp] = useState(["", "", "", "", "", ""])
@@ -20,16 +39,7 @@ export default function LoginPage() {
   const [locationStatus, setLocationStatus] = useState<"detecting" | "success" | "error" | "idle">("idle")
   const otpRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  // Redirect if already authenticated
   useEffect(() => {
-    if (!isAuthLoading && isAuthenticated) {
-      router.push("/dashboard")
-    }
-  }, [isAuthenticated, isAuthLoading, router])
-
-  // Auto-detect location on mount (silently in background)
-  useEffect(() => {
-    // Check if we already have a saved location
     const savedLocation = getSavedLocation()
     if (savedLocation) {
       setUserLocation(savedLocation)
@@ -37,7 +47,6 @@ export default function LoginPage() {
       return
     }
 
-    // Auto-detect location
     setLocationStatus("detecting")
     autoDetectLocation()
       .then((location) => {
@@ -59,8 +68,7 @@ export default function LoginPage() {
   const handleSendOtp = async () => {
     if (phoneNumber.length >= 10) {
       setIsLoading(true)
-      // Simulate OTP send
-      await new Promise(resolve => setTimeout(resolve, 1500))
+      await new Promise(resolve => setTimeout(resolve, 600))
       setIsLoading(false)
       setStep("otp")
       setCountdown(30)
@@ -69,12 +77,9 @@ export default function LoginPage() {
 
   const handleOtpChange = (index: number, value: string) => {
     if (value.length > 1) return
-    
     const newOtp = [...otp]
     newOtp[index] = value
     setOtp(newOtp)
-
-    // Auto-focus next input
     if (value && index < 5) {
       otpRefs.current[index + 1]?.focus()
     }
@@ -90,24 +95,18 @@ export default function LoginPage() {
     const otpValue = otp.join("")
     if (otpValue.length === 6) {
       setIsLoading(true)
-      
-      // First, store the phone number for the name page
+      const tempName = "User"
       localStorage.setItem("terraloop_phone", phoneNumber)
-      
-      // Simulate OTP verification delay
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // Verify OTP using context (this also starts location tracking)
-      const tempName = "User" // Temporary name, will be updated on name page
       login(phoneNumber, tempName)
-      const success = await verifyOTP(otpValue)
-      
+      const success = await verifyOTP(otpValue, phoneNumber, tempName)
       setIsLoading(false)
-      
+
       if (success) {
-        // Start location tracking immediately
         startLocationTracking()
-        router.push("/name")
+        const nameUrl = redirectTarget
+          ? `/name?redirect=${encodeURIComponent(redirectTarget)}`
+          : "/name"
+        router.push(nameUrl)
       }
     }
   }
@@ -115,105 +114,118 @@ export default function LoginPage() {
   const handleResendOtp = () => {
     if (countdown === 0) {
       setCountdown(30)
-      // Simulate resend
     }
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
-      {/* Theme Toggle */}
-      <div className="absolute right-4 top-4 z-50">
+    <div className="bg-botanical-subtle relative min-h-screen bg-background">
+      {/* Top Navigation */}
+      <header className="mx-auto flex max-w-3xl items-center justify-between px-4 pt-6">
+        <button
+          onClick={() =>
+            step === "otp"
+              ? setStep("phone")
+              : router.push(redirectTarget || "/language")
+          }
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-secondary"
+          aria-label="Back"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <span className="text-xs font-medium text-muted-foreground">Step 2 of 3</span>
         <ThemeToggle />
-      </div>
+      </header>
 
-      {/* Back Button */}
-      <button
-        onClick={() => step === "otp" ? setStep("phone") : router.push("/language")}
-        className="absolute left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-[#d4af37]/30 bg-card/50 backdrop-blur-sm transition-all hover:border-[#d4af37] hover:bg-card"
-      >
-        <ArrowLeft className="h-5 w-5 text-[#d4af37]" />
-      </button>
+      <div className="mx-auto max-w-md px-4 py-12">
+        {/* Existing session quick-continue banner (never forces redirect away from login) */}
+        {!isAuthLoading && isAuthenticated && user && step === "phone" && (
+          <Card className="mb-6 rounded-2xl border-primary/25 bg-secondary/60 shadow-sm">
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                  Active Session
+                </p>
+                <p className="truncate text-sm font-medium text-foreground">
+                  {user.name && user.name !== "User" ? `${user.name} • ` : ""}+91 {user.phone}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => router.push(redirectTarget || "/dashboard")}
+                  className="rounded-full bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  Continue
+                </button>
+                <button
+                  onClick={logout}
+                  className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  title="Sign out"
+                >
+                  <LogOut className="h-3 w-3" />
+                  Sign out
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Location Status Indicator */}
-      <div className="absolute left-4 bottom-4 z-50">
-        <div className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs backdrop-blur-sm transition-all ${
-          locationStatus === "success" 
-            ? "border border-green-500/30 bg-green-500/10 text-green-400"
-            : locationStatus === "detecting"
-            ? "border border-[#d4af37]/30 bg-[#d4af37]/10 text-[#d4af37]"
-            : locationStatus === "error"
-            ? "border border-red-500/30 bg-red-500/10 text-red-400"
-            : "border border-border bg-card/50 text-muted-foreground"
-        }`}>
-          {locationStatus === "detecting" && (
-            <>
-              <Loader2 className="h-3 w-3 animate-spin" />
-              <span>Detecting location...</span>
-            </>
-          )}
-          {locationStatus === "success" && (
-            <>
-              <CheckCircle2 className="h-3 w-3" />
-              <span>Location detected</span>
-            </>
-          )}
-          {locationStatus === "error" && (
-            <>
-              <MapPin className="h-3 w-3" />
-              <span>Location unavailable</span>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Background effects */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-[#d4af37]/10 blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-[#d4af37]/10 blur-3xl" />
-      </div>
-
-      <div className="relative mx-auto max-w-md px-4 py-20">
         {step === "phone" ? (
           <>
-            {/* Phone Number Step */}
-            <div className="mb-10 text-center">
-              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border-2 border-[#d4af37] bg-card shadow-lg">
-                <Phone className="h-8 w-8 text-[#d4af37]" />
+            <div className="mb-8 text-center">
+              <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md shadow-primary/15">
+                <Phone className="h-7 w-7" />
               </div>
-              <h1 
-                className="mb-2 text-3xl font-bold text-magical"
-                style={{ fontFamily: 'Cinzel, serif' }}
-              >
-                Enter Your Number
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                Sign in with Phone
               </h1>
-              <p 
-                className="text-muted-foreground"
-                style={{ fontFamily: 'Lora, serif' }}
-              >
-                We&apos;ll send you a magical verification code
+              <p className="mt-2 text-sm text-muted-foreground">
+                We&apos;ll send a 6-digit verification code to connect you with nearby grocers
               </p>
             </div>
 
-            <Card className="card-magical mb-6">
+            <Card className="card-fresh mb-6 rounded-2xl border-border bg-card">
               <CardContent className="p-6">
-                <label 
-                  className="mb-2 block text-sm font-medium text-foreground"
-                  style={{ fontFamily: 'Cinzel, serif' }}
-                >
+                <label className="mb-2 block text-sm font-medium text-foreground">
                   Phone Number
                 </label>
                 <div className="flex items-center gap-3">
-                  <div className="flex h-14 items-center justify-center rounded-lg border border-border bg-secondary px-4">
-                    <span className="text-lg font-medium text-foreground">+91</span>
+                  <div className="flex h-12 items-center justify-center rounded-xl border border-border bg-muted px-4">
+                    <span className="text-base font-semibold text-foreground">+91</span>
                   </div>
                   <input
                     type="tel"
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    onKeyDown={(e) => e.key === "Enter" && handleSendOtp()}
                     placeholder="9876543210"
-                    className="h-14 flex-1 rounded-lg border border-border bg-input px-4 text-lg font-medium text-foreground placeholder:text-muted-foreground focus:border-[#d4af37] focus:outline-none focus:ring-2 focus:ring-[#d4af37]/20"
-                    style={{ fontFamily: 'Lora, serif' }}
+                    className="h-12 flex-1 rounded-xl border border-border bg-input px-4 text-base font-medium text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
+                </div>
+
+                {/* Location indicator */}
+                <div className="mt-4 flex items-center justify-between rounded-xl bg-muted/60 px-3.5 py-2.5 text-xs">
+                  <span className="text-muted-foreground">Local discovery</span>
+                  {locationStatus === "detecting" && (
+                    <span className="inline-flex items-center gap-1.5 font-medium text-primary">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Detecting location...
+                    </span>
+                  )}
+                  {locationStatus === "success" && (
+                    <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700 dark:text-emerald-400">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Location ready
+                    </span>
+                  )}
+                  {locationStatus === "error" && (
+                    <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5" />
+                      Optional — enable later
+                    </span>
+                  )}
+                  {locationStatus === "idle" && userLocation === null && (
+                    <span className="text-muted-foreground">Checking...</span>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -221,47 +233,42 @@ export default function LoginPage() {
             <button
               onClick={handleSendOtp}
               disabled={phoneNumber.length < 10 || isLoading}
-              className={`group relative w-full overflow-hidden rounded-full border-2 py-4 text-lg font-semibold transition-all duration-300 ${
+              className={`group flex w-full items-center justify-center gap-2 rounded-full py-3.5 text-base font-semibold transition-all ${
                 phoneNumber.length >= 10 && !isLoading
-                  ? 'border-[#d4af37] bg-gradient-to-r from-[#d4af37] to-[#b8962f] text-background hover:shadow-[0_0_30px_rgba(212,175,55,0.5)]'
-                  : 'border-border bg-secondary text-muted-foreground cursor-not-allowed'
+                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90"
+                  : "cursor-not-allowed bg-muted text-muted-foreground"
               }`}
-              style={{ fontFamily: 'Cinzel, serif' }}
             >
               {isLoading ? (
-                <Loader2 className="mx-auto h-6 w-6 animate-spin" />
+                <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
-                <span className="relative z-10 flex items-center justify-center gap-2">
+                <>
                   Send Verification Code
-                  <Sparkles className="h-5 w-5" />
-                </span>
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </>
               )}
             </button>
           </>
         ) : (
           <>
-            {/* OTP Step */}
-            <div className="mb-10 text-center">
-              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border-2 border-[#d4af37] bg-card shadow-lg">
-                <Shield className="h-8 w-8 text-[#d4af37]" />
+            <div className="mb-8 text-center">
+              <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md shadow-primary/15">
+                <Shield className="h-7 w-7" />
               </div>
-              <h1 
-                className="mb-2 text-3xl font-bold text-magical"
-                style={{ fontFamily: 'Cinzel, serif' }}
-              >
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">
                 Verify OTP
               </h1>
-              <p 
-                className="text-muted-foreground"
-                style={{ fontFamily: 'Lora, serif' }}
-              >
-                Enter the 6-digit code sent to +91 {phoneNumber}
+              <p className="mt-2 text-sm text-muted-foreground">
+                Enter any 6-digit code for +91 {phoneNumber}
+              </p>
+              <p className="mt-1 inline-block rounded-full bg-secondary px-3 py-0.5 text-[11px] font-medium text-secondary-foreground">
+                Demo Mode — real SMS OTP requires an SMS provider
               </p>
             </div>
 
-            <Card className="card-magical mb-6">
+            <Card className="card-fresh mb-6 rounded-2xl border-border bg-card">
               <CardContent className="p-6">
-                <div className="flex justify-center gap-3">
+                <div className="flex justify-center gap-2.5">
                   {otp.map((digit, index) => (
                     <input
                       key={index}
@@ -272,22 +279,22 @@ export default function LoginPage() {
                       value={digit}
                       onChange={(e) => handleOtpChange(index, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                      className="h-14 w-12 rounded-lg border border-border bg-input text-center text-2xl font-bold text-foreground focus:border-[#d4af37] focus:outline-none focus:ring-2 focus:ring-[#d4af37]/20"
+                      className="h-13 w-11 rounded-xl border border-border bg-input text-center text-xl font-bold text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     />
                   ))}
                 </div>
 
-                <div className="mt-6 text-center">
+                <div className="mt-5 text-center">
                   {countdown > 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      Resend code in <span className="font-semibold text-[#d4af37]">{countdown}s</span>
+                    <p className="text-xs text-muted-foreground">
+                      Resend code in <span className="font-semibold text-primary">{countdown}s</span>
                     </p>
                   ) : (
                     <button
                       onClick={handleResendOtp}
-                      className="text-sm font-medium text-[#d4af37] hover:underline"
+                      className="text-xs font-semibold text-primary hover:underline"
                     >
-                      Resend Code
+                      Resend Verification Code
                     </button>
                   )}
                 </div>
@@ -297,20 +304,19 @@ export default function LoginPage() {
             <button
               onClick={handleVerifyOtp}
               disabled={otp.join("").length < 6 || isLoading}
-              className={`group relative w-full overflow-hidden rounded-full border-2 py-4 text-lg font-semibold transition-all duration-300 ${
+              className={`group flex w-full items-center justify-center gap-2 rounded-full py-3.5 text-base font-semibold transition-all ${
                 otp.join("").length === 6 && !isLoading
-                  ? 'border-[#d4af37] bg-gradient-to-r from-[#d4af37] to-[#b8962f] text-background hover:shadow-[0_0_30px_rgba(212,175,55,0.5)]'
-                  : 'border-border bg-secondary text-muted-foreground cursor-not-allowed'
+                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90"
+                  : "cursor-not-allowed bg-muted text-muted-foreground"
               }`}
-              style={{ fontFamily: 'Cinzel, serif' }}
             >
               {isLoading ? (
-                <Loader2 className="mx-auto h-6 w-6 animate-spin" />
+                <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
-                <span className="relative z-10 flex items-center justify-center gap-2">
+                <>
                   Verify & Continue
-                  <Sparkles className="h-5 w-5" />
-                </span>
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </>
               )}
             </button>
           </>
@@ -318,11 +324,25 @@ export default function LoginPage() {
 
         {/* Step indicator */}
         <div className="mt-8 flex items-center justify-center gap-2">
-          <div className="h-2 w-8 rounded-full bg-[#d4af37]" />
-          <div className="h-2 w-8 rounded-full bg-[#d4af37]" />
-          <div className="h-2 w-8 rounded-full bg-border" />
+          <div className="h-1.5 w-8 rounded-full bg-primary" />
+          <div className="h-1.5 w-8 rounded-full bg-primary" />
+          <div className="h-1.5 w-8 rounded-full bg-border" />
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <Loader2 className="h-7 w-7 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
   )
 }

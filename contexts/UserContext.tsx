@@ -42,7 +42,8 @@ interface UserContextState {
   
   // Auth actions
   login: (phone: string, name: string) => void
-  verifyOTP: (otp: string) => Promise<boolean>
+  verifyOTP: (otp: string, phoneOverride?: string, nameOverride?: string) => Promise<boolean>
+  updateUserName: (name: string) => void
   setRole: (role: "grocer" | "buyer") => void
   logout: () => void
   
@@ -65,6 +66,7 @@ const defaultContext: UserContextState = {
   locationError: null,
   login: () => {},
   verifyOTP: async () => false,
+  updateUserName: () => {},
   setRole: () => {},
   logout: () => {},
   startLocationTracking: () => {},
@@ -206,31 +208,47 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // Verify OTP action
-  const verifyOTP = useCallback(async (otp: string): Promise<boolean> => {
+  const verifyOTP = useCallback(async (
+    otp: string,
+    phoneOverride?: string,
+    nameOverride?: string
+  ): Promise<boolean> => {
     // In production, this would call an API to verify the OTP
     // For now, we'll simulate verification (accept any 6-digit OTP)
     if (otp.length !== 6 || !/^\d+$/.test(otp)) {
       return false
     }
 
-    if (!user) return false
+    const activePhone =
+      phoneOverride ||
+      user?.phone ||
+      (typeof window !== "undefined" ? localStorage.getItem("terraloop_phone") : null)
+    const activeName =
+      nameOverride ||
+      user?.name ||
+      (typeof window !== "undefined" ? localStorage.getItem("terraloop_name") : null) ||
+      "User"
+
+    if (!activePhone) return false
 
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 500))
 
     // Update user to verified
     const verifiedUser: UserProfile = {
-      ...user,
+      phone: activePhone,
+      name: activeName,
+      role: user?.role ?? null,
       isVerified: true,
       verifiedAt: Date.now(),
     }
 
     // Create session
     const newSession: UserSession = {
-      userId: `user_${user.phone}_${Date.now()}`,
-      phone: user.phone,
-      name: user.name,
-      role: user.role,
+      userId: `user_${activePhone}_${Date.now()}`,
+      phone: activePhone,
+      name: activeName,
+      role: verifiedUser.role,
       isVerified: true,
       createdAt: Date.now(),
       expiresAt: Date.now() + SESSION_DURATION,
@@ -247,6 +265,26 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
     return true
   }, [user, startLocationTrackingInternal])
+
+  // Update user display name
+  const updateUserName = useCallback((name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    localStorage.setItem("terraloop_name", trimmed)
+
+    setUser(prev => {
+      if (!prev) return prev
+      const updated = { ...prev, name: trimmed }
+      localStorage.setItem(USER_KEY, JSON.stringify(updated))
+      return updated
+    })
+    setSession(prev => {
+      if (!prev) return prev
+      const updated = { ...prev, name: trimmed }
+      localStorage.setItem(SESSION_KEY, JSON.stringify(updated))
+      return updated
+    })
+  }, [])
 
   // Set user role
   const setRole = useCallback((role: "grocer" | "buyer") => {
@@ -308,6 +346,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     locationError,
     login,
     verifyOTP,
+    updateUserName,
     setRole,
     logout,
     startLocationTracking,
