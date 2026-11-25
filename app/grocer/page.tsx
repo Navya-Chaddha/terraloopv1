@@ -458,10 +458,10 @@ export default function GrocerPage() {
           </div>
         )}
 
-        <div className="grid gap-8 lg:grid-cols-5">
+        <div className="grid min-w-0 gap-8 lg:grid-cols-5">
           {/* Upload Section */}
-          <div className="lg:col-span-3">
-            <Card className="card-fresh overflow-hidden rounded-3xl border-border bg-card">
+          <div className="min-w-0 lg:col-span-3">
+            <Card className="card-fresh min-w-0 overflow-hidden rounded-3xl border-border bg-card">
               <CardHeader className="border-b border-border/60 bg-secondary/40">
                 <CardTitle className="flex items-center gap-2 text-lg font-bold text-foreground">
                   <Camera className="h-5 w-5 text-primary" />
@@ -472,10 +472,10 @@ export default function GrocerPage() {
                 </CardDescription>
               </CardHeader>
 
-              <CardContent className="p-6">
-                <div className="mb-6 grid grid-cols-2 gap-4">
+              <CardContent className="p-4 sm:p-6">
+                <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4">
                   {ANGLE_LABELS.map((label, index) => (
-                    <div key={index} className="relative">
+                    <div key={index} className="relative min-w-0">
                       <p className="mb-2 text-xs font-semibold text-muted-foreground">
                         Photo {index + 1} • {label}
                       </p>
@@ -556,7 +556,7 @@ export default function GrocerPage() {
                   <Button
                     onClick={analyzeImages}
                     disabled={uploadedCount < 4 || isAnalyzing}
-                    className="flex-1 rounded-full bg-primary py-6 text-base font-semibold text-primary-foreground shadow-md shadow-primary/15 hover:bg-primary/90"
+                    className="min-w-0 flex-1 rounded-full bg-primary py-6 text-sm font-semibold leading-tight whitespace-normal text-primary-foreground shadow-md shadow-primary/15 hover:bg-primary/90 sm:text-base sm:whitespace-nowrap"
                   >
                     {isAnalyzing ? (
                       <>
@@ -827,7 +827,7 @@ export default function GrocerPage() {
           </div>
 
           {/* Listed Produce */}
-          <div className="lg:col-span-2">
+          <div className="min-w-0 lg:col-span-2">
             <div className="mb-4 flex items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
                 <Store className="h-5 w-5 text-primary" />

@@ -841,7 +841,10 @@ export function MarketplaceContent({ initialCategory }: MarketplaceContentProps)
             >
               <Link href={isAuthenticated ? "/dashboard" : "/"}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                {isAuthenticated ? "Back to Dashboard" : "Back to Home"}
+                <span className="sm:hidden">Back</span>
+                <span className="hidden sm:inline">
+                  {isAuthenticated ? "Back to Dashboard" : "Back to Home"}
+                </span>
               </Link>
             </Button>
 
@@ -850,11 +853,11 @@ export function MarketplaceContent({ initialCategory }: MarketplaceContentProps)
                 <Button
                   variant="outline"
                   asChild
-                  className="rounded-full border-white/25 bg-white/15 text-white hover:bg-white/25 hover:text-white"
+                  className="rounded-full border-white/25 bg-white/15 px-2.5 text-white hover:bg-white/25 hover:text-white sm:px-4"
                 >
-                  <Link href="/login?redirect=%2Fmarketplace">
+                  <Link href="/login?redirect=%2Fmarketplace" aria-label="Sign in">
                     <LogIn className="mr-1.5 h-4 w-4" />
-                    Sign In
+                    <span className="sr-only sm:not-sr-only">Sign In</span>
                   </Link>
                 </Button>
               )}
