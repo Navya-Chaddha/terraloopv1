@@ -306,11 +306,6 @@ export function getOrders(): PurchaseOrder[] {
   }
 }
 
-export function getOrderById(orderId: string): PurchaseOrder | null {
-  const orders = getOrders()
-  return orders.find(o => o.id === orderId) || null
-}
-
 // Generate unique QR code content
 function generateQRContent(prefix: string): string {
   const timestamp = Date.now().toString(36)
@@ -384,25 +379,4 @@ export async function initiatePurchase(buyerName: string, buyerPhone: string): P
   window.dispatchEvent(new Event("marketplaceUpdated"))
   
   return order
-}
-
-// Complete purchase (when QR codes are scanned)
-export function completePurchase(orderId: string): boolean {
-  const orders = getOrders()
-  const index = orders.findIndex(o => o.id === orderId)
-  
-  if (index === -1) return false
-  
-  orders[index].status = "completed"
-  localStorage.setItem(ORDERS_KEY, JSON.stringify(orders))
-  
-  return true
-}
-
-// Legacy function for backward compatibility
-export async function purchaseFromCart(): Promise<void> {
-  const user = getCurrentUser()
-  if (user) {
-    await initiatePurchase(user.name, user.phone)
-  }
 }

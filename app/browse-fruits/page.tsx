@@ -40,7 +40,7 @@ export default function BrowseFruitsPage() {
                 Produce Freshness Guide
               </h1>
               <p className="mt-1 text-sm text-emerald-100/85">
-                Explore climacteric and non-climacteric fruits available across TerraLoop
+                Learn about climacteric and non-climacteric fruits
               </p>
             </div>
           </div>

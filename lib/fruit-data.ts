@@ -308,10 +308,6 @@ export const fruits: Fruit[] = [
   },
 ]
 
-export function getFruitsByCategory(category: "climacteric" | "non-climacteric"): Fruit[] {
-  return fruits.filter((fruit) => fruit.category === category)
-}
-
 export function getCategoryInfo(category: "climacteric" | "non-climacteric") {
   if (category === "climacteric") {
     return {
