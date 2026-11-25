@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 import {
   ShoppingCart,
@@ -101,16 +102,32 @@ export default function DashboardPage() {
           </div>
 
           <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-emerald-200/90">
-                Welcome back{user?.name && user.name !== "User" ? `, ${user.name}` : ""}
-              </p>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                Dashboard
-              </h1>
-              <p className="mt-1.5 text-sm text-emerald-100/85">
-                Fresh produce recovery connecting local grocers and nearby buyers
-              </p>
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/15 text-xl font-semibold text-white ring-1 ring-white/25">
+                {user?.profile_image_url ? (
+                  <Image
+                    src={user.profile_image_url}
+                    alt={`${user.name}'s profile`}
+                    width={64}
+                    height={64}
+                    className="h-full w-full object-cover"
+                    unoptimized
+                  />
+                ) : (
+                  user?.name?.charAt(0).toUpperCase() || "U"
+                )}
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-emerald-200/90">
+                  Welcome back{user?.name && user.name !== "User" ? `, ${user.name}` : ""}
+                </p>
+                <h1 className="mt-1 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                  Dashboard
+                </h1>
+                <p className="mt-1.5 text-sm text-emerald-100/85">
+                  Fresh produce recovery connecting local grocers and nearby buyers
+                </p>
+              </div>
             </div>
 
             <div className="inline-flex items-center gap-3 self-start rounded-2xl bg-white/12 px-4 py-2.5 ring-1 ring-white/20 backdrop-blur-sm">

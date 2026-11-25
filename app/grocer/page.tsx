@@ -32,9 +32,11 @@ import { Slider } from "@/components/ui/slider"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { addListing, getCurrentUser, getRandomLocation, getGrocerListings, type GrocerListing } from "@/lib/store"
+import type { GrocerListing } from "@/lib/store"
 import { useLocalization, type Language } from "@/lib/localization"
-import { createSupabaseListing } from "@/lib/listing-service"
+import { createListing, getGrocerListingsFromApi } from "@/lib/listing-service"
+import { compressPhoto } from "@/lib/image-client"
+import { classifyFruitCategory } from "@/lib/fruit-category"
 import {
   autoDetectLocation,
   getSavedLocation,
@@ -67,18 +69,8 @@ interface MultiAnalysisResult {
   sourceImages: string[]
 }
 
-const CLIMACTERIC_FRUITS = [
-  "apple", "banana", "mango", "avocado", "peach", "papaya", "pear", "kiwi",
-  "apricot", "plum", "fig", "guava", "passion fruit", "persimmon", "tomato"
-]
-
-function classifyCategory(fruitType: string): "climacteric" | "non-climacteric" {
-  const lower = (fruitType || "").toLowerCase()
-  return CLIMACTERIC_FRUITS.some(f => lower.includes(f)) ? "climacteric" : "non-climacteric"
-}
-
 export default function GrocerPage() {
-  const { user: authUser } = useUser()
+  const { user: authUser, isLoading: isAuthLoading } = useUser()
   const [uploadedFruits, setUploadedFruits] = useState<GrocerListing[]>([])
   const [currentImages, setCurrentImages] = useState<(string | null)[]>([null, null, null, null])
   const [isDragging, setIsDragging] = useState<number | null>(null)
@@ -103,12 +95,15 @@ export default function GrocerPage() {
       setT(mod.getTranslation(savedLang))
     })
 
-    const user = getCurrentUser()
-    const phone = authUser?.phone || user?.phone
-    if (phone) {
-      const listings = getGrocerListings(phone)
-      setUploadedFruits(listings)
-      setXpEarned(listings.length * 50)
+    if (!isAuthLoading && authUser?.role === "grocer") {
+      getGrocerListingsFromApi()
+        .then((listings) => {
+          setUploadedFruits(listings)
+          setXpEarned(listings.length * 50)
+        })
+        .catch((error: unknown) => {
+          setAnalysisError(error instanceof Error ? error.message : "Could not load your listings")
+        })
     }
 
     const saved = getSavedLocation()
@@ -121,23 +116,22 @@ export default function GrocerPage() {
           // Non-fatal; grocer can still list locally or retry location
         })
     }
-  }, [authUser?.phone])
+  }, [authUser, isAuthLoading])
 
   const uploadedCount = currentImages.filter(img => img !== null).length
 
-  const handleFile = useCallback((file: File, index: number) => {
-    if (!file.type.startsWith("image/")) return
-
-    const reader = new FileReader()
-    reader.onload = (e) => {
+  const handleFile = useCallback(async (file: File, index: number) => {
+    try {
+      const image = await compressPhoto(file, 1200)
       setCurrentImages(prev => {
         const newImages = [...prev]
-        newImages[index] = e.target?.result as string
+        newImages[index] = image
         return newImages
       })
       setAnalysisError(null)
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : "Could not process this image")
     }
-    reader.readAsDataURL(file)
   }, [])
 
   const handleDrop = useCallback((e: React.DragEvent, index: number) => {
@@ -220,7 +214,7 @@ export default function GrocerPage() {
           ...fruit,
           fruitType: normalizedName,
           imageIndices: validIndices.length > 0 ? validIndices : idx === 0 ? validImages.map((_, i) => i) : [idx % validImages.length],
-          category: classifyCategory(normalizedName),
+          category: classifyFruitCategory(normalizedName),
           recommendedUses: Array.isArray(fruit.recommendedUses) ? fruit.recommendedUses : [],
           alternativeUses: Array.isArray(fruit.alternativeUses) ? fruit.alternativeUses : [],
           priceEstimate: Number(fruit.priceEstimate) || 100,
@@ -260,10 +254,10 @@ export default function GrocerPage() {
     if (!analysisResult) return
     const fruit = analysisResult.fruits[fruitIndex]
     if (!fruit || listedIndices.includes(fruitIndex)) return
-
-    const legacyUser = getCurrentUser()
-    const sellerName = authUser?.name || legacyUser?.name || "Local Grocer"
-    const sellerPhone = authUser?.phone || legacyUser?.phone || "9999999999"
+    if (!authUser || authUser.role !== "grocer") {
+      setAnalysisError("Sign in with a grocer account to publish a listing.")
+      return
+    }
 
     const matchedImages = fruit.imageIndices
       .map(i => analysisResult.sourceImages[i])
@@ -284,40 +278,36 @@ export default function GrocerPage() {
       return
     }
 
-    const grocerLocation = activeLocation.label || getRandomLocation()
+    const grocerLocation = activeLocation.label || "Noida"
     const listingData = {
       fruitName: fruit.fruitType,
-      category: fruit.category || "climacteric",
+      category: classifyFruitCategory(fruit.fruitType, fruit.category),
       freshness: fruit.rating,
       shelfLife: fruit.shelfLife,
       verdict: fruit.verdict,
       images: matchedImages.length > 0 ? matchedImages : analysisResult.sourceImages,
       recommendedUses: fruit.recommendedUses || [],
-      grocerName: sellerName,
-      grocerPhone: sellerPhone,
       grocerLocation,
       price: adjustedPrices[fruitIndex] ?? fruit.priceEstimate ?? 100,
+      basePrice: fruit.priceEstimate ?? 100,
       quantity: quantities[fruitIndex] ?? 1,
       latitude: activeLocation.latitude,
       longitude: activeLocation.longitude,
     }
 
-    const newListing = addListing(listingData)
-
-    if (activeLocation) {
-      try {
-        const synced = await createSupabaseListing(listingData)
-        if (synced?.id) {
-          newListing.supabaseId = synced.id
-        }
-      } catch (error) {
-        console.error("Failed to sync to Supabase:", error)
-      }
+    let newListing: GrocerListing
+    try {
+      newListing = await createListing(listingData)
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : "Could not publish the listing")
+      return
     }
 
+    setAnalysisError(null)
     setUploadedFruits(prev => [...prev, newListing])
     setXpEarned(prev => prev + 50)
     setJustListedBanner(`${fruit.fruitType} is now live in the Buyer Marketplace!`)
+    window.dispatchEvent(new Event("marketplaceUpdated"))
 
     const nextListed = [...listedIndices, fruitIndex]
     setListedIndices(nextListed)
@@ -534,6 +524,7 @@ export default function GrocerPage() {
                         ref={(el) => { fileInputRefs.current[index] = el }}
                         type="file"
                         accept="image/*"
+                        capture="environment"
                         onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0], index)}
                         className="hidden"
                       />

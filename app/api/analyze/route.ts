@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, GoogleGenerativeAIFetchError } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
 
 function parseDataUrl(dataUrl: string): { data: string; mimeType: string } {
@@ -37,11 +37,6 @@ export async function POST(request: NextRequest) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel(
-      { model: "gemini-3.5-flash-lite" },
-      { apiVersion: "v1" }
-    );
-
     const imageParts = rawImages.map((img) => {
       const { data, mimeType } = parseDataUrl(img);
       return {
@@ -101,16 +96,39 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
       contentParts.push(part);
     });
 
-    const result = await model.generateContent(contentParts);
+    const model = genAI.getGenerativeModel(
+      { model: "gemini-3.5-flash-lite" },
+      { apiVersion: "v1" }
+    );
+
+    let result;
+    try {
+      result = await model.generateContent(contentParts);
+    } catch (error) {
+      if (!(error instanceof GoogleGenerativeAIFetchError) || ![429, 503].includes(error.status ?? 0)) {
+        throw error;
+      }
+
+      console.warn(`Gemini model returned ${error.status}; retrying with gemini-3.1-flash-lite.`);
+      const fallbackModel = genAI.getGenerativeModel(
+        { model: "gemini-3.1-flash-lite" },
+        { apiVersion: "v1" }
+      );
+      result = await fallbackModel.generateContent(contentParts);
+    }
+
     const response = await result.response;
     const text = response.text();
 
     return NextResponse.json({ analysis: text });
   } catch (error) {
     console.error("Error analyzing images:", error);
+    const status = error instanceof GoogleGenerativeAIFetchError && error.status
+      ? error.status
+      : 500;
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to analyze images" },
-      { status: 500 }
+      { status }
     );
   }
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import { getSavedLocation } from "@/lib/location"
+import { apiFetch } from "@/lib/api"
 
 export interface GrocerListing {
   id: string
@@ -22,7 +23,6 @@ export interface GrocerListing {
   sold: boolean
   latitude?: number
   longitude?: number
-  supabaseId?: string
 }
 
 const STORAGE_KEY = "terraloop_grocer_listings"
@@ -319,22 +319,56 @@ function generateQRContent(prefix: string): string {
 }
 
 // Initiate purchase - removes items from marketplace immediately and generates QR codes
-export function initiatePurchase(buyerName: string, buyerPhone: string): PurchaseOrder | null {
+export async function initiatePurchase(buyerName: string, buyerPhone: string): Promise<PurchaseOrder | null> {
   const cart = getCart()
   if (cart.length === 0) return null
-  
-  const orderId = Date.now().toString() + Math.random().toString(36).substr(2, 9)
-  const total = getCartTotal()
+  if (cart.some((item) => item.type !== "listing")) {
+    throw new Error("Remove unavailable demo items from your cart before checkout.")
+  }
+
+  const { orders: databaseOrders } = await apiFetch<{
+    orders: Array<{
+      id: number
+      listing_id: number
+      product_name: string
+      image_url: string | null
+      quantity: number
+      total_price: number | string
+    }>
+  }>("/api/orders/checkout", {
+    method: "POST",
+    body: JSON.stringify({
+      items: cart.map((item) => ({
+        listing_id: Number(item.id),
+        quantity: item.quantity,
+      })),
+    }),
+  })
+  if (databaseOrders.length !== cart.length) {
+    throw new Error("The server returned an incomplete order. Please check your orders before retrying.")
+  }
+
+  const orderedItems = databaseOrders.map((order) => {
+    const cartItem = cart.find((item) => Number(item.id) === order.listing_id)
+    if (!cartItem) throw new Error("The server returned an unexpected listing in the order.")
+    return {
+      ...cartItem,
+      name: order.product_name,
+      image: order.image_url || cartItem.image,
+      price: Number(order.total_price) / order.quantity,
+    }
+  })
+  const total = databaseOrders.reduce((sum, order) => sum + Number(order.total_price), 0)
   
   // Generate unique QR codes for buyer and grocer
   const buyerQR = generateQRContent("TL_BUY")
   const grocerQR = generateQRContent("TL_SEL")
   
   const order: PurchaseOrder = {
-    id: orderId,
+    id: databaseOrders.map((item) => item.id).join("-"),
     buyerName,
     buyerPhone,
-    items: [...cart],
+    items: orderedItems,
     total,
     buyerQR,
     grocerQR,
@@ -342,22 +376,11 @@ export function initiatePurchase(buyerName: string, buyerPhone: string): Purchas
     createdAt: Date.now(),
   }
   
-  // Update/mark grocer listings when payment is initiated
-  cart.forEach(item => {
-    if (item.type === "listing") {
-      purchaseListing(item.id, item.quantity)
-    }
-  })
+  const savedOrders = getOrders()
+  savedOrders.push(order)
+  localStorage.setItem(ORDERS_KEY, JSON.stringify(savedOrders))
   
-  // Save the order
-  const orders = getOrders()
-  orders.push(order)
-  localStorage.setItem(ORDERS_KEY, JSON.stringify(orders))
-  
-  // Clear the cart after initiating purchase
   clearCart()
-  
-  // Dispatch event to refresh marketplace
   window.dispatchEvent(new Event("marketplaceUpdated"))
   
   return order
@@ -377,9 +400,9 @@ export function completePurchase(orderId: string): boolean {
 }
 
 // Legacy function for backward compatibility
-export function purchaseFromCart(): void {
+export async function purchaseFromCart(): Promise<void> {
   const user = getCurrentUser()
   if (user) {
-    initiatePurchase(user.name, user.phone)
+    await initiatePurchase(user.name, user.phone)
   }
 }

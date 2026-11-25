@@ -73,7 +73,7 @@ export interface Fruit {
   unit: string
   freshness: number
   inStock: boolean
-  quantity: number
+  quantity?: number
   sellerName: string
   sellerPhone: string
   sellerAddress: string

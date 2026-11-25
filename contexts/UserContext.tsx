@@ -2,16 +2,21 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
 import { getSavedLocation, saveUserLocation, clearUserLocation, type UserLocation } from "@/lib/location"
+import { apiFetch } from "@/lib/api"
 
 // Session storage key
 const SESSION_KEY = "terraloop_session"
 const USER_KEY = "terraloop_user"
+const TOKEN_KEY = "terraloop_token"
 
 // User profile interface
 export interface UserProfile {
+  id: number
   phone: string
+  email: string
   name: string
-  role: "grocer" | "buyer" | null
+  role: "grocer" | "buyer"
+  profile_image_url: string | null
   isVerified: boolean
   verifiedAt?: number
 }
@@ -21,10 +26,24 @@ export interface UserSession {
   userId: string
   phone: string
   name: string
-  role: "grocer" | "buyer" | null
+  role: "grocer" | "buyer"
   isVerified: boolean
   createdAt: number
   expiresAt: number
+}
+
+export interface RegisterInput {
+  name: string
+  phone: string
+  email: string
+  password: string
+  role: "grocer" | "buyer"
+  profile_image_url?: string | null
+}
+
+interface AuthResponse {
+  token: string
+  user: Omit<UserProfile, "isVerified" | "verifiedAt">
 }
 
 // Context state interface
@@ -41,10 +60,9 @@ interface UserContextState {
   locationError: string | null
   
   // Auth actions
-  login: (phone: string, name: string) => void
-  verifyOTP: (otp: string, phoneOverride?: string, nameOverride?: string) => Promise<boolean>
-  updateUserName: (name: string) => void
-  setRole: (role: "grocer" | "buyer") => void
+  login: (identifier: string, password: string) => Promise<UserProfile>
+  register: (input: RegisterInput) => Promise<UserProfile>
+  updateUserName: (name: string) => Promise<void>
   logout: () => void
   
   // Location actions
@@ -64,10 +82,9 @@ const defaultContext: UserContextState = {
   currentLocation: null,
   isLocationTracking: false,
   locationError: null,
-  login: () => {},
-  verifyOTP: async () => false,
-  updateUserName: () => {},
-  setRole: () => {},
+  login: async () => { throw new Error("Authentication is unavailable") },
+  register: async () => { throw new Error("Registration is unavailable") },
+  updateUserName: async () => {},
   logout: () => {},
   startLocationTracking: () => {},
   stopLocationTracking: () => {},
@@ -104,7 +121,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
           const parsedUser: UserProfile = JSON.parse(storedUser)
           
           // Check if session is still valid
-          if (parsedSession.expiresAt > Date.now()) {
+          if (parsedSession.expiresAt > Date.now() && localStorage.getItem(TOKEN_KEY)) {
             setSession(parsedSession)
             setUser(parsedUser)
             
@@ -186,6 +203,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const clearSession = useCallback(() => {
     localStorage.removeItem(SESSION_KEY)
     localStorage.removeItem(USER_KEY)
+    localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem("terraloop_name")
     localStorage.removeItem("terraloop_phone")
     clearUserLocation()
@@ -193,91 +211,60 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
-  // Login action - stores phone temporarily before OTP verification
-  const login = useCallback((phone: string, name: string) => {
-    const pendingUser: UserProfile = {
-      phone,
-      name,
-      role: null,
-      isVerified: false,
-    }
-    setUser(pendingUser)
-    // Store in legacy format for backward compatibility
-    localStorage.setItem("terraloop_phone", phone)
-    localStorage.setItem("terraloop_name", name)
-  }, [])
-
-  // Verify OTP action
-  const verifyOTP = useCallback(async (
-    otp: string,
-    phoneOverride?: string,
-    nameOverride?: string
-  ): Promise<boolean> => {
-    // In production, this would call an API to verify the OTP
-    // For now, we'll simulate verification (accept any 6-digit OTP)
-    if (otp.length !== 6 || !/^\d+$/.test(otp)) {
-      return false
-    }
-
-    const activePhone =
-      phoneOverride ||
-      user?.phone ||
-      (typeof window !== "undefined" ? localStorage.getItem("terraloop_phone") : null)
-    const activeName =
-      nameOverride ||
-      user?.name ||
-      (typeof window !== "undefined" ? localStorage.getItem("terraloop_name") : null) ||
-      "User"
-
-    if (!activePhone) return false
-
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    // Update user to verified
-    const verifiedUser: UserProfile = {
-      phone: activePhone,
-      name: activeName,
-      role: user?.role ?? null,
-      isVerified: true,
-      verifiedAt: Date.now(),
-    }
-
-    // Create session
+  const saveAuth = useCallback((token: string, profile: AuthResponse["user"]) => {
+    const verifiedUser: UserProfile = { ...profile, isVerified: true, verifiedAt: Date.now() }
     const newSession: UserSession = {
-      userId: `user_${activePhone}_${Date.now()}`,
-      phone: activePhone,
-      name: activeName,
+      userId: String(verifiedUser.id),
+      phone: verifiedUser.phone,
+      name: verifiedUser.name,
       role: verifiedUser.role,
       isVerified: true,
       createdAt: Date.now(),
       expiresAt: Date.now() + SESSION_DURATION,
     }
 
-    // Save to state and localStorage
-    setUser(verifiedUser)
-    setSession(newSession)
+    localStorage.setItem(TOKEN_KEY, token)
     localStorage.setItem(SESSION_KEY, JSON.stringify(newSession))
     localStorage.setItem(USER_KEY, JSON.stringify(verifiedUser))
+    localStorage.setItem("terraloop_phone", verifiedUser.phone)
+    localStorage.setItem("terraloop_name", verifiedUser.name)
+    setUser(verifiedUser)
+    setSession(newSession)
+    return verifiedUser
+  }, [])
 
-    // Start location tracking immediately after verification
+  const login = useCallback(async (identifier: string, password: string) => {
+    const result = await apiFetch<AuthResponse>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ identifier, password }),
+    })
+    const authenticatedUser = saveAuth(result.token, result.user)
     startLocationTrackingInternal()
+    return authenticatedUser
+  }, [saveAuth, startLocationTrackingInternal])
 
-    return true
-  }, [user, startLocationTrackingInternal])
+  const register = useCallback(async (input: RegisterInput) => {
+    const result = await apiFetch<AuthResponse>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify(input),
+    })
+    const authenticatedUser = saveAuth(result.token, result.user)
+    startLocationTrackingInternal()
+    return authenticatedUser
+  }, [saveAuth, startLocationTrackingInternal])
 
   // Update user display name
-  const updateUserName = useCallback((name: string) => {
+  const updateUserName = useCallback(async (name: string) => {
     const trimmed = name.trim()
     if (!trimmed) return
-    localStorage.setItem("terraloop_name", trimmed)
-
-    setUser(prev => {
-      if (!prev) return prev
-      const updated = { ...prev, name: trimmed }
-      localStorage.setItem(USER_KEY, JSON.stringify(updated))
-      return updated
+    const { user: updatedUser } = await apiFetch<{ user: AuthResponse["user"] }>("/api/users/me", {
+      method: "PUT",
+      body: JSON.stringify({ name: trimmed }),
     })
+    const verifiedUser: UserProfile = { ...updatedUser, isVerified: true }
+    localStorage.setItem("terraloop_name", trimmed)
+    localStorage.setItem(USER_KEY, JSON.stringify(verifiedUser))
+    setUser(verifiedUser)
     setSession(prev => {
       if (!prev) return prev
       const updated = { ...prev, name: trimmed }
@@ -285,19 +272,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
       return updated
     })
   }, [])
-
-  // Set user role
-  const setRole = useCallback((role: "grocer" | "buyer") => {
-    if (!user || !session) return
-
-    const updatedUser = { ...user, role }
-    const updatedSession = { ...session, role }
-
-    setUser(updatedUser)
-    setSession(updatedSession)
-    localStorage.setItem(USER_KEY, JSON.stringify(updatedUser))
-    localStorage.setItem(SESSION_KEY, JSON.stringify(updatedSession))
-  }, [user, session])
 
   // Logout action
   const logout = useCallback(() => {
@@ -345,9 +319,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     isLocationTracking,
     locationError,
     login,
-    verifyOTP,
+    register,
     updateUserName,
-    setRole,
     logout,
     startLocationTracking,
     stopLocationTracking,

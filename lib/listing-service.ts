@@ -1,31 +1,26 @@
-import { createClient } from "@/lib/supabase/client"
-import { getSavedLocation } from "@/lib/location"
+import { apiFetch } from "@/lib/api"
+import { classifyFruitCategory } from "@/lib/fruit-category"
+import type { GrocerListing } from "@/lib/store"
 
-// Interface matching the Supabase listings table
-export interface SupabaseListing {
-  id?: string
-  fruit_name: string
-  category: "climacteric" | "non-climacteric"
-  freshness: number
-  shelf_life: string | null
-  verdict: string | null
-  images: string[]
-  recommended_uses: string[]
+interface MySqlListing {
+  id: number
+  product_name: string
+  category: string
+  quantity: number | string
+  original_price: number | string
+  discounted_price: number | string
+  image_url: string | null
+  images: string | null
+  analysis_json: string | null
+  location: string | null
+  latitude: number | string | null
+  longitude: number | string | null
+  status: string
+  created_at: string | Date
   grocer_name: string
   grocer_phone: string
-  grocer_location: string
-  price: number
-  base_price: number
-  price_margin: number
-  quantity: number
-  sold: boolean
-  latitude: number
-  longitude: number
-  listed_at?: string
-  user_id?: string | null
 }
 
-// Interface for creating a new listing (from grocer page)
 export interface CreateListingInput {
   fruitName: string
   category: "climacteric" | "non-climacteric"
@@ -34,162 +29,95 @@ export interface CreateListingInput {
   verdict: string
   images: string[]
   recommendedUses: string[]
-  grocerName: string
-  grocerPhone: string
   grocerLocation: string
   price: number
+  basePrice: number
   quantity: number
+  latitude: number
+  longitude: number
 }
 
-// Create a new listing in Supabase
-export async function createSupabaseListing(input: CreateListingInput): Promise<SupabaseListing | null> {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return null
-  }
-  const supabase = createClient()
-  
-  // Get user's current location
-  const savedLocation = getSavedLocation()
-  if (!savedLocation) {
-    console.error("No location available for listing")
-    return null
-  }
-
-  const listing: Omit<SupabaseListing, 'id' | 'listed_at' | 'user_id'> = {
-    fruit_name: input.fruitName,
-    category: input.category,
-    freshness: input.freshness,
-    shelf_life: input.shelfLife,
-    verdict: input.verdict,
-    images: input.images,
-    recommended_uses: input.recommendedUses,
-    grocer_name: input.grocerName,
-    grocer_phone: input.grocerPhone,
-    grocer_location: input.grocerLocation,
-    price: input.price,
-    base_price: input.price,
-    price_margin: 45,
-    quantity: input.quantity,
-    sold: false,
-    latitude: savedLocation.latitude,
-    longitude: savedLocation.longitude,
-  }
-
-  const { data, error } = await supabase
-    .from("listings")
-    .insert([listing])
-    .select()
-    .single()
-
-  if (error) {
-    console.error("Error creating listing:", error)
-    return null
-  }
-
-  return data as SupabaseListing
-}
-
-// Mark a listing as sold in Supabase
-export async function markListingSold(listingId: string): Promise<boolean> {
-  const supabase = createClient()
-
-  const { error } = await supabase
-    .from("listings")
-    .update({ sold: true })
-    .eq("id", listingId)
-
-  if (error) {
-    console.error("Error marking listing as sold:", error)
-    return false
-  }
-
-  return true
-}
-
-// Update listing quantity in Supabase
-export async function updateListingQuantity(listingId: string, quantity: number): Promise<boolean> {
-  const supabase = createClient()
-
-  const { error } = await supabase
-    .from("listings")
-    .update({ 
-      quantity,
-      sold: quantity <= 0 
-    })
-    .eq("id", listingId)
-
-  if (error) {
-    console.error("Error updating listing quantity:", error)
-    return false
-  }
-
-  return true
-}
-
-// Get grocer's own listings from Supabase
-export async function getGrocerListingsFromSupabase(grocerPhone: string): Promise<SupabaseListing[]> {
-  const supabase = createClient()
-
-  const { data, error } = await supabase
-    .from("listings")
-    .select("*")
-    .eq("grocer_phone", grocerPhone)
-    .order("listed_at", { ascending: false })
-
-  if (error) {
-    console.error("Error fetching grocer listings:", error)
-    return []
-  }
-
-  return data as SupabaseListing[]
-}
-
-// Sync local listings to Supabase (for migration)
-export async function syncLocalListingsToSupabase(): Promise<number> {
-  const STORAGE_KEY = "terraloop_grocer_listings"
-  
-  if (typeof window === "undefined") return 0
-  
-  const stored = localStorage.getItem(STORAGE_KEY)
-  if (!stored) return 0
-  
-  const savedLocation = getSavedLocation()
-  if (!savedLocation) return 0
-  
+function parseAnalysis(value: string | null): Record<string, unknown> {
+  if (!value) return {}
   try {
-    const localListings = JSON.parse(stored)
-    let syncedCount = 0
-    
-    for (const listing of localListings) {
-      if (!listing.synced) {
-        const result = await createSupabaseListing({
-          fruitName: listing.fruitName,
-          category: listing.category,
-          freshness: listing.freshness,
-          shelfLife: listing.shelfLife,
-          verdict: listing.verdict,
-          images: listing.images,
-          recommendedUses: listing.recommendedUses,
-          grocerName: listing.grocerName,
-          grocerPhone: listing.grocerPhone,
-          grocerLocation: listing.grocerLocation,
-          price: listing.price,
-          quantity: listing.quantity || 1,
-        })
-        
-        if (result) {
-          listing.synced = true
-          listing.supabaseId = result.id
-          syncedCount++
-        }
-      }
-    }
-    
-    // Update local storage with synced status
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(localListings))
-    
-    return syncedCount
+    const parsed: unknown = JSON.parse(value)
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {}
   } catch {
-    return 0
+    return {}
   }
+}
+
+function mapListing(row: MySqlListing): GrocerListing {
+  const analysis = parseAnalysis(row.analysis_json)
+  let images: string[] = []
+  if (row.images) {
+    try {
+      const parsed: unknown = JSON.parse(row.images)
+      if (Array.isArray(parsed)) {
+        images = parsed.filter((image): image is string => typeof image === "string")
+      }
+    } catch {
+      images = []
+    }
+  }
+  if (images.length === 0 && row.image_url) images = [row.image_url]
+  const createdAt = new Date(row.created_at)
+  const price = Number(row.discounted_price)
+
+  return {
+    id: String(row.id),
+    fruitName: row.product_name,
+    category: classifyFruitCategory(row.product_name, row.category),
+    freshness: Number(analysis.freshness) || 7,
+    shelfLife: typeof analysis.shelfLife === "string" ? analysis.shelfLife : "",
+    verdict: typeof analysis.verdict === "string" ? analysis.verdict : "",
+    images,
+    recommendedUses: Array.isArray(analysis.recommendedUses)
+      ? analysis.recommendedUses.filter((item): item is string => typeof item === "string")
+      : [],
+    grocerName: row.grocer_name,
+    grocerPhone: row.grocer_phone,
+    grocerLocation: row.location || "",
+    price,
+    basePrice: Number(row.original_price),
+    priceMargin: Number(row.original_price) - price,
+    quantity: Number(row.quantity),
+    listedAt: Number.isNaN(createdAt.getTime()) ? Date.now() : createdAt.getTime(),
+    sold: row.status !== "available",
+    latitude: row.latitude === null ? undefined : Number(row.latitude),
+    longitude: row.longitude === null ? undefined : Number(row.longitude),
+  }
+}
+
+export async function createListing(input: CreateListingInput): Promise<GrocerListing> {
+  const image = input.images[0] || ""
+  const { listing } = await apiFetch<{ listing: MySqlListing }>("/api/listings", {
+    method: "POST",
+    body: JSON.stringify({
+      product_name: input.fruitName,
+      category: input.category,
+      description: input.verdict,
+      quantity: input.quantity,
+      unit: "kg",
+      original_price: input.basePrice,
+      discounted_price: input.price,
+      image_url: image,
+      images: input.images,
+      freshness: input.freshness,
+      shelfLife: input.shelfLife,
+      verdict: input.verdict,
+      recommendedUses: input.recommendedUses,
+      location: input.grocerLocation,
+      latitude: input.latitude,
+      longitude: input.longitude,
+    }),
+  })
+  return mapListing(listing)
+}
+
+export async function getGrocerListingsFromApi(): Promise<GrocerListing[]> {
+  const { listings } = await apiFetch<{ listings: MySqlListing[] }>("/api/listings/my")
+  return listings.map(mapListing)
 }

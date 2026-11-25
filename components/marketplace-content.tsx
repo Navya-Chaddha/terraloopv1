@@ -39,7 +39,7 @@ import {
   ShieldCheck,
   LogIn,
 } from "lucide-react"
-import { fruits, getCategoryInfo } from "@/lib/fruit-data"
+import { getCategoryInfo } from "@/lib/fruit-data"
 import {
   addToCart,
   getCart,
@@ -296,12 +296,16 @@ function CartSheet({
   onRemove,
   onProceedToPayment,
   cartTotal,
+  isCheckingOut,
+  checkoutError,
 }: {
   cartItems: CartItem[]
   onUpdateQuantity: (id: string, qty: number) => void
   onRemove: (id: string) => void
   onProceedToPayment: () => void
   cartTotal: number
+  isCheckingOut: boolean
+  checkoutError: string | null
 }) {
   return (
     <div className="flex h-full flex-col">
@@ -377,6 +381,11 @@ function CartSheet({
 
       {cartItems.length > 0 && (
         <div className="border-t border-border pt-4">
+          {checkoutError && (
+            <p className="mb-3 text-sm text-destructive" role="alert">
+              {checkoutError}
+            </p>
+          )}
           <div className="mb-4 flex items-center justify-between">
             <span className="text-base font-medium text-foreground">Order Total</span>
             <span className="text-xl font-bold text-primary">Rs. {cartTotal.toFixed(0)}</span>
@@ -384,9 +393,14 @@ function CartSheet({
           <Button
             className="w-full rounded-full bg-primary py-6 text-base font-semibold text-primary-foreground hover:bg-primary/90"
             onClick={onProceedToPayment}
+            disabled={isCheckingOut}
           >
-            <QrCode className="mr-2 h-4 w-4" />
-            Generate Pickup QR
+            {isCheckingOut ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <QrCode className="mr-2 h-4 w-4" />
+            )}
+            {isCheckingOut ? "Reserving items..." : "Generate Pickup QR"}
           </Button>
         </div>
       )}
@@ -654,6 +668,8 @@ export function MarketplaceContent({ initialCategory }: MarketplaceContentProps)
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrder | null>(null)
   const [isPaymentOpen, setIsPaymentOpen] = useState(false)
+  const [isCheckingOut, setIsCheckingOut] = useState(false)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [isAuthPromptOpen, setIsAuthPromptOpen] = useState(false)
   const [authPromptItemName, setAuthPromptItemName] = useState<string | null>(null)
   const [authPromptAction, setAuthPromptAction] = useState<string>("add items to your cart")
@@ -715,24 +731,7 @@ export function MarketplaceContent({ initialCategory }: MarketplaceContentProps)
     distanceKm: item.distanceKm,
   }))
 
-  const fruitItems: MarketplaceItem[] = fruits.map(fruit => ({
-    id: fruit.id,
-    type: "fruit" as const,
-    name: fruit.name,
-    category: fruit.category,
-    image: fruit.image,
-    description: fruit.description,
-    price: fruit.price,
-    unit: fruit.unit,
-    freshness: fruit.freshness,
-    inStock: fruit.inStock,
-    quantity: 10,
-    sellerName: fruit.sellerName,
-    sellerPhone: fruit.sellerPhone,
-    sellerAddress: fruit.sellerAddress,
-  }))
-
-  const allItems = [...grocerItems, ...fruitItems]
+  const allItems = grocerItems
 
   const filteredItems =
     selectedCategory === "all"
@@ -789,7 +788,7 @@ export function MarketplaceContent({ initialCategory }: MarketplaceContentProps)
     removeFromCart(id)
   }
 
-  const handleProceedToPayment = () => {
+  const handleProceedToPayment = async () => {
     if (!isAuthenticated) {
       setIsCartOpen(false)
       setAuthPromptItemName(null)
@@ -809,11 +808,18 @@ export function MarketplaceContent({ initialCategory }: MarketplaceContentProps)
       return
     }
 
-    const order = initiatePurchase(buyerName, buyerPhone)
-    if (order) {
+    setCheckoutError(null)
+    setIsCheckingOut(true)
+    try {
+      const order = await initiatePurchase(buyerName, buyerPhone)
+      if (!order) return
       setPurchaseOrder(order)
       setIsPaymentOpen(true)
       setIsCartOpen(false)
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "Could not reserve your cart")
+    } finally {
+      setIsCheckingOut(false)
     }
   }
 
@@ -886,6 +892,8 @@ export function MarketplaceContent({ initialCategory }: MarketplaceContentProps)
                     onRemove={handleRemoveFromCart}
                     onProceedToPayment={handleProceedToPayment}
                     cartTotal={cartTotal}
+                    isCheckingOut={isCheckingOut}
+                    checkoutError={checkoutError}
                   />
                 </SheetContent>
               </Sheet>

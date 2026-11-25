@@ -22,13 +22,20 @@ function NamePageContent() {
   const { updateUserName } = useUser()
   const [name, setName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleContinue = async () => {
     if (name.trim().length >= 2) {
       setIsSubmitting(true)
-      updateUserName(name.trim())
-      await new Promise(resolve => setTimeout(resolve, 400))
-      router.push(redirectTarget)
+      setError(null)
+      try {
+        await updateUserName(name.trim())
+        router.push(redirectTarget)
+      } catch (submitError) {
+        setError(submitError instanceof Error ? submitError.message : "Could not update your name.")
+      } finally {
+        setIsSubmitting(false)
+      }
     }
   }
 
@@ -89,6 +96,8 @@ function NamePageContent() {
             </p>
           </div>
         )}
+
+        {error && <p role="alert" className="mb-4 text-center text-sm text-destructive">{error}</p>}
 
         <button
           onClick={handleContinue}

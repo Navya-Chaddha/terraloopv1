@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { apiFetch } from "@/lib/api"
+import { classifyFruitCategory } from "@/lib/fruit-category"
 import {
   autoDetectLocation,
   calculateDistanceKm,
@@ -9,7 +10,6 @@ import {
   isWithinNoidaRegion,
   saveUserLocation,
 } from "@/lib/location"
-import { getAvailableListings, type GrocerListing } from "@/lib/store"
 
 export interface GeoListing {
   id: string
@@ -70,42 +70,88 @@ function calculateDistanceMeters(
   return calculateDistanceKm(lat1, lon1, lat2, lon2) * 1000
 }
 
-function localListingToGeo(
-  listing: GrocerListing,
+interface MySqlListing {
+  id: number
+  product_name: string
+  category: string
+  quantity: number | string
+  original_price: number | string
+  discounted_price: number | string
+  image_url: string | null
+  images: string | null
+  analysis_json: string | null
+  location: string | null
+  latitude: number | string | null
+  longitude: number | string | null
+  status: string
+  created_at: string | Date
+  grocer_name: string
+  grocer_phone: string
+  unit: string
+}
+
+function parseJson(value: string | null): Record<string, unknown> {
+  if (!value) return {}
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+function listingToGeo(
+  listing: MySqlListing,
   userLat?: number,
   userLng?: number
 ): GeoListing {
+  const analysis = parseJson(listing.analysis_json)
+  let images: string[] = []
+  if (listing.images) {
+    try {
+      const parsed: unknown = JSON.parse(listing.images)
+      if (Array.isArray(parsed)) images = parsed.filter((image): image is string => typeof image === "string")
+    } catch {
+      images = []
+    }
+  }
+  if (images.length === 0 && listing.image_url) images = [listing.image_url]
+
   const hasCoords =
-    typeof listing.latitude === "number" && typeof listing.longitude === "number"
+    listing.latitude !== null && listing.longitude !== null
+  const latitude = hasCoords ? Number(listing.latitude) : 0
+  const longitude = hasCoords ? Number(listing.longitude) : 0
   const hasUserLoc = typeof userLat === "number" && typeof userLng === "number"
 
   const distanceKm =
-    hasCoords && hasUserLoc
-      ? calculateDistanceKm(userLat!, userLng!, listing.latitude!, listing.longitude!)
-      : hasUserLoc
-      ? 0
-      : undefined
+    hasCoords && hasUserLoc ? calculateDistanceKm(userLat!, userLng!, latitude, longitude) : undefined
+
+  const createdAt = new Date(listing.created_at)
 
   return {
-    id: listing.id,
-    fruit_name: listing.fruitName,
-    category: listing.category,
-    freshness: listing.freshness,
-    shelf_life: listing.shelfLife || null,
-    verdict: listing.verdict || null,
-    images: listing.images || [],
-    recommended_uses: listing.recommendedUses || [],
-    grocer_name: listing.grocerName,
-    grocer_phone: listing.grocerPhone,
-    grocer_location: listing.grocerLocation,
-    price: listing.price,
-    base_price: listing.basePrice,
-    price_margin: listing.priceMargin,
-    quantity: listing.quantity || 1,
-    sold: listing.sold,
-    listed_at: new Date(listing.listedAt).toISOString(),
-    latitude: listing.latitude ?? userLat ?? 0,
-    longitude: listing.longitude ?? userLng ?? 0,
+    id: String(listing.id),
+    fruit_name: listing.product_name,
+    category: classifyFruitCategory(listing.product_name, listing.category),
+    freshness: Number(analysis.freshness) || 7,
+    shelf_life: typeof analysis.shelfLife === "string" ? analysis.shelfLife : null,
+    verdict: typeof analysis.verdict === "string" ? analysis.verdict : null,
+    images,
+    recommended_uses: Array.isArray(analysis.recommendedUses)
+      ? analysis.recommendedUses.filter((item): item is string => typeof item === "string")
+      : [],
+    grocer_name: listing.grocer_name,
+    grocer_phone: listing.grocer_phone,
+    grocer_location: listing.location || "",
+    price: Number(listing.discounted_price),
+    base_price: Number(listing.original_price),
+    price_margin: Number(listing.original_price) - Number(listing.discounted_price),
+    quantity: Number(listing.quantity) || 0,
+    sold: listing.status !== "available",
+    listed_at: Number.isNaN(createdAt.getTime()) ? new Date().toISOString() : createdAt.toISOString(),
+    latitude,
+    longitude,
     distance_km: distanceKm,
   }
 }
@@ -129,11 +175,6 @@ export function useGeofencedListings(
   const lastFetchLocation = useRef<{ lat: number; lng: number } | null>(null)
   const watchIdRef = useRef<number | null>(null)
   const locationRef = useRef<GeoLocation | null>(null)
-  const hasSupabaseConfig = Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  )
-  const supabase = useRef(hasSupabaseConfig ? createClient() : null)
-
   useEffect(() => {
     locationRef.current = location
   }, [location])
@@ -157,52 +198,16 @@ export function useGeofencedListings(
           return
         }
 
-        // 1. Read local grocer listings from localStorage and apply Noida + radiusKm geofence
-        const localRaw = getAvailableListings()
-        const localGeo = localRaw
+        const { listings: rows } = await apiFetch<{ listings: MySqlListing[] }>("/api/listings")
+        const nearbyListings = rows
+          .map((item) => listingToGeo(item, lat, lng))
           .filter((item) => {
-            if (typeof item.latitude === "number" && typeof item.longitude === "number") {
-              return isWithinNoidaRegion(item.latitude, item.longitude)
-            }
-            return true
-          })
-          .map((item) => localListingToGeo(item, lat, lng))
-          .filter((item) => {
-            if (!hasCoords) return true
-            if (typeof item.distance_km !== "number") return true
-            return item.distance_km <= radiusKm
+            if (!hasCoords || item.latitude === 0 || item.longitude === 0) return true
+            return isWithinNoidaRegion(item.latitude, item.longitude)
+              && (item.distance_km === undefined || item.distance_km <= radiusKm)
           })
 
-        // 2. Fetch nearby Noida listings from Supabase RPC if configured & inside Noida
-        let remoteGeo: GeoListing[] = []
-        if (supabase.current && hasCoords) {
-          const { data, error: rpcError } = await supabase.current.rpc(
-            "get_nearby_listings",
-            {
-              user_lat: lat,
-              user_lng: lng,
-              radius_km: radiusKm,
-            }
-          )
-          if (rpcError) {
-            setError(rpcError.message)
-          } else {
-            remoteGeo = ((data as GeoListing[]) || []).filter((item) =>
-              isWithinNoidaRegion(Number(item.latitude), Number(item.longitude))
-            )
-          }
-        }
-
-        // 3. Merge local + remote without duplicates
-        const syncedIds = new Set(
-          localRaw.map((l) => l.supabaseId).filter((id): id is string => Boolean(id))
-        )
-        const remoteIds = new Set(remoteGeo.map((r) => r.id))
-        const uniqueLocal = localGeo.filter(
-          (l) => !remoteIds.has(l.id) && !syncedIds.has(l.id)
-        )
-
-        const combined = [...uniqueLocal, ...remoteGeo].sort((a, b) => {
+        const combined = nearbyListings.sort((a, b) => {
           const distA = a.distance_km ?? Number.MAX_SAFE_INTEGER
           const distB = b.distance_km ?? Number.MAX_SAFE_INTEGER
           if (distA !== distB) return distA - distB
